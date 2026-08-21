@@ -546,6 +546,9 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
     return result
 
 
+MAX_ATTEMPTS_PER_GAME = 2  # the original attempt plus exactly one re-attempt
+
+
 @app.post("/api/explain/save")
 async def explain_save(req: Request, authorization: Optional[str] = Header(None)):
     role, sub = _check(authorization)
@@ -559,6 +562,13 @@ async def explain_save(req: Request, authorization: Optional[str] = Header(None)
         if t:
             category = t.get("category") or category
             cohort = t.get("cohort") or cohort
+        # enforce the one-reattempt cap server-side, not just in the UI
+        game_id = b.get("game_id")
+        res = _redis("LRANGE", EXPLAIN_LIST_KEY, "0", "999")
+        existing = [json.loads(x) for x in (res.get("result") or [])]
+        prior_attempts = sum(1 for r in existing if r.get("trainee_phone") == sub and r.get("game_id") == game_id)
+        if prior_attempts >= MAX_ATTEMPTS_PER_GAME:
+            raise HTTPException(400, "You've already used your one re-attempt for this game.")
     rec = {
         "id": base64.urlsafe_b64encode(os.urandom(6)).decode().rstrip("="),
         "received_at": time.strftime("%Y-%m-%d %H:%M"),

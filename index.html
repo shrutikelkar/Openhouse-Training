@@ -8,7 +8,10 @@
 </head>
 <body>
 <div class="wrap">
-  <div><div class="eyebrow">openhouse</div><h1>game explanation check</h1><div class="tagline">choose to be better</div></div>
+  <div class="brand-row">
+    <div id="headerMascot" class="mascot"></div>
+    <div><div class="eyebrow">openhouse</div><h1>game explanation check</h1><div class="tagline">choose to be better</div></div>
+  </div>
   <div id="root"></div>
 </div>
 <script src="games-data.js"></script>
@@ -19,6 +22,34 @@ const API=(window.location.protocol==='file:'||window.location.hostname==='local
 
 function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
 
+function mascotSVG(size){
+  return '<svg viewBox="0 0 100 100" width="'+size+'" height="'+size+'" xmlns="http://www.w3.org/2000/svg">'
+    +'<defs>'
+      +'<linearGradient id="roofG" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#EF5C34"/><stop offset="100%" stop-color="#CE4520"/></linearGradient>'
+      +'<linearGradient id="bodyG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#12a3ba"/><stop offset="100%" stop-color="#0b6f80"/></linearGradient>'
+    +'</defs>'
+    +'<rect x="2" y="2" width="96" height="96" rx="26" fill="#FFF7EE"/>'
+    +'<polygon points="50,16 86,48 14,48" fill="url(#roofG)"/>'
+    +'<circle cx="50" cy="24" r="4.5" fill="#EF5C34"/>'
+    +'<rect x="47.5" y="30" width="5" height="10" rx="2" fill="#CE4520"/>'
+    +'<rect x="24" y="46" width="52" height="36" rx="12" fill="url(#bodyG)"/>'
+    +'<circle cx="39" cy="61" r="4.5" fill="#fff"/><circle cx="61" cy="61" r="4.5" fill="#fff"/>'
+    +'<circle cx="40" cy="62" r="1.6" fill="#0b6f80"/><circle cx="62" cy="62" r="1.6" fill="#0b6f80"/>'
+    +'<path d="M38 70 Q50 80 62 70" stroke="#fff" stroke-width="3.5" fill="none" stroke-linecap="round"/>'
+    +'<circle cx="26" cy="63" r="4" fill="#F6B8A0" opacity=".7"/><circle cx="74" cy="63" r="4" fill="#F6B8A0" opacity=".7"/>'
+    +'</svg>';
+}
+
+function progressRingSVG(pct, size){
+  const r=(size/2)-5, c=2*Math.PI*r, off=c*(1-pct/100);
+  return '<div class="progress-ring-wrap"><svg width="'+size+'" height="'+size+'">'
+    +'<circle cx="'+(size/2)+'" cy="'+(size/2)+'" r="'+r+'" fill="none" stroke="#ecdfd0" stroke-width="6"/>'
+    +'<circle cx="'+(size/2)+'" cy="'+(size/2)+'" r="'+r+'" fill="none" stroke="#EF5C34" stroke-width="6" stroke-linecap="round" '
+      +'stroke-dasharray="'+c+'" stroke-dashoffset="'+off+'" style="transition:stroke-dashoffset .4s"/>'
+    +'</svg><div class="pct">'+pct+'%</div></div>';
+}
+document.getElementById('headerMascot').innerHTML=mascotSVG(48);
+
 let TRAINEE={ name:'', phone:'', category:'', cohort:'', approved:false };
 let MY_RECORDS=[];
 let STATE={ game:null, ageBand:null, history:[], finalResult:null };
@@ -28,7 +59,10 @@ function authHeader(){ return {'Authorization':'Bearer '+localStorage.getItem(TK
 
 function loginView(msg){
   root.innerHTML='';
-  const c=document.createElement('div'); c.className='card'; c.style.maxWidth='400px'; c.style.margin='10px auto';
+  const hero=document.createElement('div'); hero.className='hero';
+  hero.innerHTML='<div class="mascot">'+mascotSVG(80)+'</div><div style="font-weight:800;font-size:17px">hi, I\'m Housie 👋</div><div class="muted" style="font-size:13.5px">I\'ll listen to your game explanations and help you get ready</div>';
+  root.appendChild(hero);
+  const c=document.createElement('div'); c.className='card'; c.style.maxWidth='400px'; c.style.margin='14px auto 10px';
   c.innerHTML='<div style="font-weight:800;font-size:18px;margin-bottom:2px">sign in</div><div class="muted" style="font-size:13px;margin-bottom:12px">enter the phone number, name and PIN your admin gave you</div>';
   const ph=document.createElement('input'); ph.placeholder='phone number'; ph.type='tel';
   const nm=document.createElement('input'); nm.placeholder='your name';
@@ -73,13 +107,23 @@ function micSupported(){ return !!(window.SpeechRecognition||window.webkitSpeech
 
 function categoryGames(){ return (window.GAMES||[]).filter(g=>g.category===TRAINEE.category); }
 
+const GAME_ICONS={'match-me':'🎯','colour-flip':'🎨','shape-stitch':'🧵','shape-fusion':'🔷','cue-cards':'✏️','artventure':'🎲','imagine-that':'💭','doodle-dash':'⚡','art-gym-book':'📖'};
+function gameIcon(id){ return GAME_ICONS[id]||'🧩'; }
+
 function scoreTotal(s){ return ['age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine'].reduce((n,k)=>n+(s[k]?1:0),0); }
+
+const MAX_ATTEMPTS_PER_GAME=2; // original attempt + exactly one re-attempt
 
 // latest attempt per game_id (records come back newest-first from the server)
 function latestByGame(){
   const map={};
   MY_RECORDS.forEach(r=>{ if(!map[r.game_id]) map[r.game_id]=r; });
   return map;
+}
+function attemptCountByGame(){
+  const counts={};
+  MY_RECORDS.forEach(r=>{ counts[r.game_id]=(counts[r.game_id]||0)+1; });
+  return counts;
 }
 
 async function fetchMyRecords(){
@@ -103,13 +147,18 @@ async function renderChecklist(){
   await fetchMyStatus();
   const games=categoryGames();
   const latest=latestByGame();
+  const attempts=attemptCountByGame();
   const doneCount=games.filter(g=>latest[g.id]).length;
 
   root.innerHTML='';
   const head=document.createElement('div'); head.className='card';
-  head.innerHTML='<div style="font-weight:800;font-size:18px;margin-bottom:2px">hi, '+esc(TRAINEE.name)+'</div>'
-    +'<div class="muted" style="font-size:13px;margin-bottom:12px">'+esc(TRAINEE.category)+(TRAINEE.cohort?' · '+esc(TRAINEE.cohort):'')+'</div>'
-    +'<div class="muted" style="font-size:13px">'+doneCount+' of '+games.length+' games completed. Every game is required — you can do them in any order, and redo a finished one anytime.</div>';
+  const pct=games.length?Math.round(100*doneCount/games.length):0;
+  head.innerHTML='<div style="display:flex;align-items:center;gap:14px">'
+      +progressRingSVG(pct,64)
+      +'<div style="flex:1"><div style="font-weight:800;font-size:18px;margin-bottom:2px">hi, '+esc(TRAINEE.name)+'</div>'
+      +'<div class="muted" style="font-size:13px">'+esc(TRAINEE.category)+(TRAINEE.cohort?' · '+esc(TRAINEE.cohort):'')+'</div></div>'
+    +'</div>'
+    +'<div class="muted" style="font-size:13px;margin-top:10px">'+doneCount+' of '+games.length+' games completed. Every game is required — you can do them in any order. Each game allows one re-attempt.</div>';
   root.appendChild(head);
 
   if(!games.length){
@@ -119,18 +168,27 @@ async function renderChecklist(){
 
   games.forEach(g=>{
     const rec=latest[g.id];
+    const count=attempts[g.id]||0;
+    const canReattempt=rec && count<MAX_ATTEMPTS_PER_GAME;
     const item=document.createElement('div'); item.className='checklist-item'+(rec?' done':'');
+    const icon=document.createElement('div'); icon.className='game-icon'; icon.textContent=gameIcon(g.id);
+    item.appendChild(icon);
     const dot=document.createElement('div'); dot.className='check-dot '+(rec?'done':'pending');
     dot.textContent=rec?'✓':'';
     item.appendChild(dot);
     const mid=document.createElement('div'); mid.style.flex='1';
     mid.innerHTML='<div style="font-weight:800;font-size:15px">'+esc(g.name)+'</div>'
-      +(rec?'<div class="muted" style="font-size:12.5px">'+scoreTotal(rec.scores)+'/5 · ages '+esc(rec.age_band)+'</div>':'<div class="muted" style="font-size:12.5px">not attempted yet</div>');
+      +(rec?'<div class="muted" style="font-size:12.5px">'+scoreTotal(rec.scores)+'/5 · ages '+esc(rec.age_band)+' · attempt '+count+' of '+MAX_ATTEMPTS_PER_GAME+'</div>':'<div class="muted" style="font-size:12.5px">not attempted yet</div>');
     item.appendChild(mid);
-    const btn=document.createElement('button'); btn.className=rec?'ghost':'btn'; btn.style.flex='none';
-    btn.textContent=rec?'re-attempt':'start →';
-    btn.onclick=()=>startGame(g);
-    item.appendChild(btn);
+    if(!rec || canReattempt){
+      const btn=document.createElement('button'); btn.className=rec?'ghost':'btn'; btn.style.flex='none';
+      btn.textContent=rec?'re-attempt':'start →';
+      btn.onclick=()=>startGame(g);
+      item.appendChild(btn);
+    } else {
+      const done=document.createElement('span'); done.className='pill'; done.style.flex='none'; done.textContent='both attempts used';
+      item.appendChild(done);
+    }
     root.appendChild(item);
   });
 
@@ -164,7 +222,8 @@ function startGame(game){
 function renderIntro(){
   root.innerHTML='';
   const card=document.createElement('div'); card.className='card center';
-  card.innerHTML='<span class="pill coral">'+esc(STATE.game.name)+'</span><span class="pill teal">ages '+esc(STATE.ageBand)+'</span>'
+  card.innerHTML='<div class="mascot" style="margin:0 auto 6px">'+mascotSVG(56)+'</div>'
+    +'<span class="pill coral">'+esc(STATE.game.name)+'</span><span class="pill teal">ages '+esc(STATE.ageBand)+'</span>'
     +'<p style="margin-top:14px">Explain <b>'+esc(STATE.game.name)+'</b> out loud, as if you\'re briefing a group of children aged <b>'+esc(STATE.ageBand)+'</b>. Cover the goal, how to play, and how you\'d end it.</p>'
     +'<p style="font-weight:700;font-size:13.5px;color:var(--coral-dark)">Explain as you would to a child. Be clear and specific. Do not use any jargon.</p>'
     +'<p class="muted" style="font-size:13px">Tap the mic, speak your explanation, then tap "submit answer" when you\'re done. There\'ll be a couple of follow-up questions after.</p>';
@@ -184,7 +243,8 @@ function renderConversation(waitingForModel){
   const log=document.createElement('div');
   STATE.history.forEach(h=>{
     const d=document.createElement('div'); d.className='turn '+(h.role==='trainee'?'trainee':'ai');
-    d.innerHTML='<span class="lab">'+(h.role==='trainee'?esc(TRAINEE.name||'you'):'Housie')+'</span>'+esc(h.text);
+    const labIcon=h.role==='ai'?'<span style="display:inline-flex;vertical-align:middle;margin-right:4px">'+mascotSVG(16)+'</span>':'';
+    d.innerHTML='<span class="lab">'+labIcon+(h.role==='trainee'?esc(TRAINEE.name||'you'):'Housie')+'</span>'+esc(h.text);
     if(h.role==='ai'){
       const replay=document.createElement('button'); replay.className='ghost'; replay.style.cssText='margin-top:6px;font-size:11px;padding:5px 11px';
       replay.textContent='🔊 replay'; replay.onclick=()=>speak(h.text);
@@ -195,7 +255,8 @@ function renderConversation(waitingForModel){
   card.appendChild(log);
 
   if(waitingForModel){
-    const w=document.createElement('div'); w.className='muted center'; w.style.margin='14px 0'; w.textContent='Housie is thinking…';
+    const w=document.createElement('div'); w.className='muted center'; w.style.margin='14px 0';
+    w.innerHTML='<div class="mascot" style="margin:0 auto 4px;animation:pulse 1.2s infinite;border-radius:50%">'+mascotSVG(32)+'</div>Housie is thinking…';
     card.appendChild(w); root.appendChild(card); return;
   }
 
@@ -301,29 +362,32 @@ function renderFinal(){
   root.innerHTML='';
   const s=(STATE.finalResult||{}).scores||{};
   const total=scoreTotal(s);
-  const card=document.createElement('div'); card.className='card';
-  card.innerHTML='<div style="font-weight:800;font-size:17px;margin-bottom:6px">result — '+esc(STATE.game.name)+'</div>'
+  const card=document.createElement('div'); card.className='card center';
+  card.innerHTML='<div class="mascot" style="margin:0 auto 4px">'+mascotSVG(total===5?64:48)+'</div>'
+    +(total===5?'<div style="font-size:13px;font-weight:800;color:var(--sage)">perfect score! 🎉</div>':'')
+    +'<div style="font-weight:800;font-size:17px;margin:4px 0 6px">result — '+esc(STATE.game.name)+'</div>'
     +'<div class="badge-total">'+total+' / 5</div>'
-    +'<div class="scorebar">'
+    +'<div class="scorebar center" style="justify-content:center">'
       +'<span class="sc '+(s.age_appropriateness?'yes':'no')+'">'+(s.age_appropriateness?'✓':'✗')+' age fit (ages '+esc(STATE.ageBand)+')</span>'
       +'<span class="sc '+(s.clarity?'yes':'no')+'">'+(s.clarity?'✓':'✗')+' clarity</span>'
       +'<span class="sc '+(s.gameplay_accuracy?'yes':'no')+'">'+(s.gameplay_accuracy?'✓':'✗')+' gameplay accuracy</span>'
       +'<span class="sc '+(s.challenge_accuracy?'yes':'no')+'">'+(s.challenge_accuracy?'✓':'✗')+' challenge accuracy</span>'
       +'<span class="sc '+(s.genuine?'yes':'no')+'">'+(s.genuine?'✓':'✗')+' genuine</span>'
     +'</div>'
-    +(STATE.finalResult.reasoning?'<div class="muted" style="font-size:13.5px;margin-bottom:12px">'+esc(STATE.finalResult.reasoning)+'</div>':'')
-    +(STATE.finalResult.suggestion?'<div class="feedback-box" style="margin-bottom:12px"><div class="ft">🎯 from Housie</div><div style="font-size:13.5px">'+esc(STATE.finalResult.suggestion)+'</div></div>':'')
-    +(STATE.finalResult.new_idea?'<div class="feedback-box" style="margin-bottom:12px"><div class="ft">💡 new idea from '+esc(TRAINEE.name||'you')+'</div><div style="font-size:13.5px">'+esc(STATE.finalResult.new_idea)+'</div></div>':'');
+    +(STATE.finalResult.reasoning?'<div class="muted" style="font-size:13.5px;margin-bottom:12px;text-align:left">'+esc(STATE.finalResult.reasoning)+'</div>':'')
+    +(STATE.finalResult.suggestion?'<div class="feedback-box" style="margin-bottom:12px;text-align:left"><div class="ft">🎯 from Housie</div><div style="font-size:13.5px">'+esc(STATE.finalResult.suggestion)+'</div></div>':'')
+    +(STATE.finalResult.new_idea?'<div class="feedback-box" style="margin-bottom:12px;text-align:left"><div class="ft">💡 new idea from '+esc(TRAINEE.name||'you')+'</div><div style="font-size:13.5px">'+esc(STATE.finalResult.new_idea)+'</div></div>':'');
   const saveBtn=document.createElement('button'); saveBtn.className='btn'; saveBtn.style.width='100%'; saveBtn.textContent='save & back to checklist';
   saveBtn.onclick=async()=>{
     saveBtn.disabled=true; saveBtn.textContent='saving…';
     try{
-      await fetch(API+'/api/explain/save',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},authHeader()),body:JSON.stringify({
+      const r=await fetch(API+'/api/explain/save',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},authHeader()),body:JSON.stringify({
         game_id:STATE.game.id, game_name:STATE.game.name, age_band:STATE.ageBand, trainee_name:TRAINEE.name,
         history:STATE.history, scores:s, reasoning:STATE.finalResult.reasoning||'', new_idea:STATE.finalResult.new_idea||null, suggestion:STATE.finalResult.suggestion||''
       })});
+      if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not save'); }
       renderChecklist();
-    }catch(e){ saveBtn.textContent='could not save — try again'; saveBtn.disabled=false; }
+    }catch(e){ saveBtn.textContent=e.message||'could not save — try again'; saveBtn.disabled=false; }
   };
   card.appendChild(saveBtn);
   root.appendChild(card);
