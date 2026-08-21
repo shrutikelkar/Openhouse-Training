@@ -3,6 +3,7 @@
 window.GAMES = [
   {
     id: "match-me",
+    category: "art-design",
     name: "Match Me",
     group_size: "3–8 children · 1 educator",
     duration: "25 min",
@@ -31,6 +32,7 @@ window.GAMES = [
   },
   {
     id: "colour-flip",
+    category: "art-design",
     name: "Colour Flip",
     group_size: "3–8 children · 1 educator",
     duration: "25 min",
@@ -60,6 +62,7 @@ window.GAMES = [
   },
   {
     id: "shape-stitch",
+    category: "art-design",
     name: "Shape Stitch",
     group_size: "3–8 children · 1 educator",
     duration: "25 min",
@@ -85,6 +88,7 @@ window.GAMES = [
   },
   {
     id: "shape-fusion",
+    category: "art-design",
     name: "Shape Fusion",
     group_size: "3–8 children · 1 educator",
     duration: "25 min",
@@ -113,6 +117,7 @@ window.GAMES = [
   },
   {
     id: "cue-cards",
+    category: "art-design",
     name: "Cue Cards",
     group_size: "3–8 children · 1 educator",
     duration: "25 min",
@@ -138,6 +143,7 @@ window.GAMES = [
   },
   {
     id: "artventure",
+    category: "art-design",
     name: "Artventure",
     group_size: "3–8 children · 1 educator",
     duration: "25 min",
@@ -171,6 +177,7 @@ window.GAMES = [
   },
   {
     id: "imagine-that",
+    category: "art-design",
     name: "Imagine That",
     group_size: "3–8 children · 1 educator",
     duration: "25 min",
@@ -196,6 +203,7 @@ window.GAMES = [
   },
   {
     id: "doodle-dash",
+    category: "art-design",
     name: "Doodle Dash",
     group_size: "3–8 children · 1 educator",
     duration: "25 min",
@@ -221,6 +229,7 @@ window.GAMES = [
   },
   {
     id: "art-gym-book",
+    category: "art-design",
     name: "Art Gym Book",
     group_size: null,
     duration: null,

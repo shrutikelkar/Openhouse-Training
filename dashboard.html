@@ -4,64 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>game explanation · dashboard</title>
-<style>
-  :root{--cream:#F9F2E8;--subtle:#FDF8F1;--ink:#2C2B28;--muted:#6b675f;--line:#e7e0d4;
-    --coral:#F25E35;--mint:#A3C996;--mintd:#5b7d52;--ok:#3f8f4f;--warn:#C9962b;--stop:#C0492f;}
-  *{box-sizing:border-box}
-  body{font-family:-apple-system,Nunito,Segoe UI,Helvetica,Arial,sans-serif;color:var(--ink);
-    margin:0;background:var(--cream);line-height:1.5}
-  .wrap{max-width:920px;margin:0 auto;padding:22px 18px 60px}
-  h1{font-size:24px;font-weight:800;margin:.2em 0}
-  .eyebrow{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--coral)}
-  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:14px}
-  input,select{width:100%;border:1px solid #d8d2c6;border-radius:10px;padding:10px 12px;font-size:15px;font-family:inherit;margin-bottom:8px}
-  .btn{background:var(--coral);color:#fff;border:none;border-radius:999px;padding:11px 18px;font-weight:800;font-size:15px;cursor:pointer}
-  .btn:disabled{opacity:.5}
-  .muted{color:var(--muted)}
-  .err{color:var(--stop);font-size:13px;margin-top:6px;display:none}
-  .pill{background:var(--subtle);border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;color:var(--muted)}
-  .topbar{display:flex;align-items:center;gap:10px;margin-bottom:6px}
-  .topbar .sp{flex:1}
-  .ghost{background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 13px;font-weight:700;font-size:12px;color:var(--muted);cursor:pointer}
-  .empty{text-align:center;color:var(--muted);padding:40px 0}
-  .section{background:var(--subtle);border:1px solid var(--line);border-radius:13px;padding:14px 13px;margin-bottom:16px}
-  .section:last-child{margin-bottom:0}
-  .section-title{font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mintd);margin-bottom:10px}
-  .stat-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
-  .stat{flex:1;min-width:130px;background:#fff;border:1px solid var(--line);border-radius:13px;padding:12px 14px}
-  .stat .n{font-size:24px;font-weight:800}
-  .stat .l{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
-  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .sum-table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:420px}
-  .sum-table th{text-align:left;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--mintd);padding:6px 8px;border-bottom:2px solid var(--line);white-space:nowrap}
-  .sum-table td{padding:7px 8px;border-bottom:1px dashed #efe9dd;vertical-align:middle}
-  .sum-table tr:last-child td{border-bottom:none}
-  .yn-yes{display:inline-block;background:#e6f4e6;color:var(--ok);font-weight:800;border-radius:6px;padding:2px 8px;font-size:12px}
-  .yn-no{display:inline-block;background:#fdecea;color:var(--stop);font-weight:800;border-radius:6px;padding:2px 8px;font-size:12px}
-  .yn-pct{font-size:12px;color:var(--muted)}
-  .record{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px}
-  .record-head{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;margin-bottom:8px}
-  .txt{background:var(--subtle);border-radius:10px;padding:10px 12px;font-size:13.5px;margin:6px 0}
-  .txt .lab{font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mintd);display:block;margin-bottom:2px}
-  .filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
-  .filters select{width:auto;margin-bottom:0}
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="wrap">
+<div class="wrap wide">
   <div class="topbar">
-    <div><div class="eyebrow">openhouse · trainee checks</div><h1>game explanation dashboard</h1></div>
+    <div><div class="eyebrow">openhouse · admin</div><h1>game explanation dashboard</h1><div class="tagline">choose to be better</div></div>
     <div class="sp"></div>
     <button class="ghost" id="refresh" style="display:none">refresh</button>
     <button class="ghost" id="signout" style="display:none">sign out</button>
   </div>
   <div id="root"></div>
 </div>
+<script src="games-data.js"></script>
 <script>
 const TK='oh_explain_token';
 const root=document.getElementById('root');
 const API=(window.location.protocol==='file:'||window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:8000':'';
-let ALL=[], GAME_FILTER='', TRAINEE_FILTER='';
+let ALL=[], TRAINEES=[], ACTIVE_TAB='responses', GAME_FILTER='', TRAINEE_FILTER='', CATEGORY_FILTER='';
 
 function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
 function sect(title,inner){return '<div class="section"><div class="section-title">'+title+'</div>'+inner+'</div>';}
@@ -124,8 +84,10 @@ function recordsView(list){
     let html='<div class="record">';
     html+='<div class="record-head">';
     html+='<span style="font-weight:800;font-size:15px">'+esc(r.trainee_name||'(unnamed trainee)')+'</span>';
-    html+='<span class="pill">'+esc(r.game_name||'')+'</span>';
-    html+='<span class="pill">ages '+esc(r.age_band||'?')+'</span>';
+    html+='<span class="pill coral">'+esc(r.game_name||'')+'</span>';
+    html+='<span class="pill teal">ages '+esc(r.age_band||'?')+'</span>';
+    if(r.category) html+='<span class="pill">'+esc(r.category)+'</span>';
+    if(r.cohort) html+='<span class="pill">'+esc(r.cohort)+'</span>';
     html+='<span class="muted" style="font-size:12px;margin-left:auto">'+esc(r.received_at||'')+'</span>';
     html+='</div>';
     html+='<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">';
@@ -136,6 +98,7 @@ function recordsView(list){
     html+='<span class="pill" style="margin-left:4px">'+total+'/5</span>';
     html+='</div>';
     if(r.reasoning) html+='<div class="txt"><span class="lab">scoring notes</span>'+esc(r.reasoning)+'</div>';
+    if(r.new_idea) html+='<div class="txt" style="background:var(--teal-tint)"><span class="lab">💡 new idea</span>'+esc(r.new_idea)+'</div>';
     html+='<button class="ghost" style="margin-top:4px" onclick="const t=document.getElementById(\''+uid+'\');t.style.display=t.style.display===\'none\'?\'block\':\'none\'">view transcript</button>';
     html+='<div id="'+uid+'" style="display:none;margin-top:10px">';
     (r.history||[]).forEach(turn=>{
@@ -148,24 +111,26 @@ function recordsView(list){
   }).join('');
 }
 
-function render(list){
-  ALL=list;
-  document.getElementById('refresh').style.display='inline-block';
-  document.getElementById('signout').style.display='inline-block';
-  root.innerHTML='';
+function newIdeasView(list){
+  const withIdeas=list.filter(r=>r.new_idea);
+  if(!withIdeas.length) return '<div class="muted" style="font-size:13px;padding:8px 0">No new ideas captured yet.</div>';
+  const sorted=[...withIdeas].sort((a,b)=>(b.received_at||'').localeCompare(a.received_at||''));
+  return sorted.map(r=>'<div class="txt" style="background:var(--teal-tint)"><span class="lab">'+esc(r.trainee_name||'?')+' · '+esc(r.game_name||'')+'</span>'+esc(r.new_idea)+'</div>').join('');
+}
 
-  if(!list.length){ root.innerHTML='<div class="empty">No game explanations recorded yet.</div>'; return; }
-
-  const games=[...new Set(list.map(r=>r.game_name).filter(Boolean))].sort();
-  const trainees=[...new Set(list.map(r=>r.trainee_name).filter(Boolean))].sort();
+function responsesTab(){
+  const games=[...new Set(ALL.map(r=>r.game_name).filter(Boolean))].sort();
+  const trainees=[...new Set(ALL.map(r=>r.trainee_name).filter(Boolean))].sort();
+  const categories=[...new Set(ALL.map(r=>r.category).filter(Boolean))].sort();
 
   const filterRow=document.createElement('div'); filterRow.className='filters';
-  filterRow.innerHTML='<span style="font-weight:800;font-size:13px;color:var(--mintd)">Filter</span>'
+  filterRow.innerHTML='<span style="font-weight:800;font-size:13px;color:var(--teal)">Filter</span>'
     +'<select id="game-select"><option value="">All games</option>'+games.map(g=>'<option value="'+esc(g)+'"'+(g===GAME_FILTER?' selected':'')+'>'+esc(g)+'</option>').join('')+'</select>'
-    +'<select id="trainee-select"><option value="">All trainees</option>'+trainees.map(t=>'<option value="'+esc(t)+'"'+(t===TRAINEE_FILTER?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select>';
+    +'<select id="trainee-select"><option value="">All trainees</option>'+trainees.map(t=>'<option value="'+esc(t)+'"'+(t===TRAINEE_FILTER?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select>'
+    +(categories.length?'<select id="category-select"><option value="">All categories</option>'+categories.map(c=>'<option value="'+esc(c)+'"'+(c===CATEGORY_FILTER?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select>':'');
   root.appendChild(filterRow);
 
-  const filtered=list.filter(r=>(!GAME_FILTER||r.game_name===GAME_FILTER)&&(!TRAINEE_FILTER||r.trainee_name===TRAINEE_FILTER));
+  const filtered=ALL.filter(r=>(!GAME_FILTER||r.game_name===GAME_FILTER)&&(!TRAINEE_FILTER||r.trainee_name===TRAINEE_FILTER)&&(!CATEGORY_FILTER||r.category===CATEGORY_FILTER));
   const stats=summaryStats(filtered);
 
   const card=document.createElement('div'); card.className='card';
@@ -181,15 +146,92 @@ function render(list){
       +'<div class="stat"><div class="n">'+stats.genuine+'%</div><div class="l">genuine</div></div>'
       +'</div>';
   }
+  html+=sect('New ideas from trainees',newIdeasView(filtered));
   html+=sect('By game',byGameTable(filtered));
   html+=sect('All checks — '+filtered.length,recordsView(filtered));
   card.innerHTML=html;
   root.appendChild(card);
 
   const gs=document.getElementById('game-select');
-  if(gs) gs.onchange=()=>{ GAME_FILTER=gs.value; render(ALL); };
+  if(gs) gs.onchange=()=>{ GAME_FILTER=gs.value; render(); };
   const ts=document.getElementById('trainee-select');
-  if(ts) ts.onchange=()=>{ TRAINEE_FILTER=ts.value; render(ALL); };
+  if(ts) ts.onchange=()=>{ TRAINEE_FILTER=ts.value; render(); };
+  const cs=document.getElementById('category-select');
+  if(cs) cs.onchange=()=>{ CATEGORY_FILTER=cs.value; render(); };
+}
+
+function categoryGameCount(category){
+  return (window.GAMES||[]).filter(g=>g.category===category).length;
+}
+
+function traineesTab(){
+  const formCard=document.createElement('div'); formCard.className='card';
+  formCard.innerHTML='<div style="font-weight:800;font-size:16px;margin-bottom:10px">add a trainee</div>';
+  const nm=document.createElement('input'); nm.placeholder='name';
+  const ph=document.createElement('input'); ph.placeholder='phone number'; ph.type='tel';
+  const pin=document.createElement('input'); pin.placeholder='4-digit PIN they will log in with';
+  const cat=document.createElement('select');
+  ['art-design','public-speaking','robotics','music','chess'].forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; cat.appendChild(o); });
+  const coh=document.createElement('input'); coh.placeholder='cohort (e.g. August 2026 batch)';
+  const er=document.createElement('div'); er.className='err';
+  const addBtn=document.createElement('button'); addBtn.className='btn'; addBtn.style.width='100%'; addBtn.textContent='add trainee';
+  addBtn.onclick=async()=>{
+    if(!nm.value.trim()||!ph.value.trim()||!pin.value.trim()){ er.textContent='name, phone and PIN are required'; er.style.display='block'; return; }
+    addBtn.disabled=true; addBtn.textContent='adding…';
+    try{
+      const r=await fetch(API+'/api/admin/trainees',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},{'Authorization':'Bearer '+localStorage.getItem(TK)}),
+        body:JSON.stringify({name:nm.value.trim(),phone:ph.value.trim(),pin:pin.value.trim(),category:cat.value,cohort:coh.value.trim()})});
+      if(!r.ok){ const d=await r.json(); throw new Error(d.detail||'could not add trainee'); }
+      nm.value=''; ph.value=''; pin.value=''; coh.value=''; er.style.display='none';
+      await loadTrainees(); render();
+    }catch(e){ er.textContent=e.message; er.style.display='block'; }
+    addBtn.disabled=false; addBtn.textContent='add trainee';
+  };
+  formCard.append(nm,ph,pin,cat,coh,er,addBtn);
+  root.appendChild(formCard);
+
+  const listCard=document.createElement('div'); listCard.className='card';
+  let html='<div style="font-weight:800;font-size:16px;margin-bottom:10px">trainees — '+TRAINEES.length+'</div>';
+  if(!TRAINEES.length){
+    html+='<div class="empty">No trainees added yet.</div>';
+  } else {
+    html+='<div class="table-wrap"><table class="sum-table"><thead><tr><th>Name</th><th>Phone</th><th>Category</th><th>Cohort</th><th>Progress</th></tr></thead><tbody>';
+    TRAINEES.forEach(t=>{
+      const total=categoryGameCount(t.category);
+      const done=new Set(ALL.filter(r=>r.trainee_phone===t.phone && r.category===t.category).map(r=>r.game_id)).size;
+      html+='<tr><td><b>'+esc(t.name)+'</b></td><td>'+esc(t.phone)+'</td><td>'+esc(t.category)+'</td><td>'+esc(t.cohort||'—')+'</td>'
+        +'<td>'+(total?done+' / '+total:'no games yet')+'</td></tr>';
+    });
+    html+='</tbody></table></div>';
+  }
+  listCard.innerHTML=html;
+  root.appendChild(listCard);
+}
+
+function render(){
+  document.getElementById('refresh').style.display='inline-block';
+  document.getElementById('signout').style.display='inline-block';
+  root.innerHTML='';
+
+  const tabBar=document.createElement('div'); tabBar.className='tabs';
+  [{id:'responses',label:'Responses'},{id:'trainees',label:'Trainees'}].forEach(t=>{
+    const b=document.createElement('button'); b.className='tab'+(ACTIVE_TAB===t.id?' active':''); b.textContent=t.label;
+    b.onclick=()=>{ ACTIVE_TAB=t.id; render(); };
+    tabBar.appendChild(b);
+  });
+  root.appendChild(tabBar);
+
+  if(ACTIVE_TAB==='trainees'){ traineesTab(); return; }
+  if(!ALL.length){ root.innerHTML+='<div class="empty">No game explanations recorded yet.</div>'; return; }
+  responsesTab();
+}
+
+async function loadTrainees(){
+  const t=localStorage.getItem(TK);
+  try{
+    const r=await fetch(API+'/api/admin/trainees',{headers:{'Authorization':'Bearer '+t}});
+    TRAINEES = r.ok ? await r.json() : [];
+  }catch(e){ TRAINEES=[]; }
 }
 
 async function load(){
@@ -199,7 +241,9 @@ async function load(){
   try{
     const r=await fetch(API+'/api/explanations',{headers:{'Authorization':'Bearer '+t}});
     if(r.status===401){ localStorage.removeItem(TK); loginView('Session expired — sign in again.'); return; }
-    render(await r.json());
+    ALL=await r.json();
+    await loadTrainees();
+    render();
   }catch(e){ root.innerHTML='<div class="empty">Could not load — is the server running?</div>'; }
 }
 document.getElementById('refresh').onclick=load;

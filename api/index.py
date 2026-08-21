@@ -6,14 +6,26 @@ games out loud; Gemini asks follow-up questions and scores the explanation
 on age fit, clarity, gameplay accuracy, challenge-adjustment accuracy, and
 whether it was genuine or read verbatim from the reference material.
 
+Two roles:
+  staff    — signs in with STAFF_EMAIL/STAFF_PASSWORD, reaches the dashboard
+             (view every trainee's responses, add new trainees).
+  trainee  — signs in with phone + name + a 4-digit PIN the admin set when
+             adding them, reaches only the recording tool, scoped to their
+             own category and their own saved records.
+
 Accounts (env vars set in the Vercel dashboard — defaults below are
 placeholders, replace them before relying on this for anything real):
-  STAFF_EMAIL / STAFF_PASSWORD               — signs in to run checks and view the dashboard
+  STAFF_EMAIL / STAFF_PASSWORD               — admin login
   APP_SECRET                                  — any long random string (signs tokens)
   KV_REST_API_URL / KV_REST_API_TOKEN         (Vercel KV)   — OR
   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN  (Upstash)
   GEMINI_API_KEY                              — Google AI Studio key (free tier)
-  GEMINI_MODEL                                — defaults to gemini-3.6-flash
+  GEMINI_MODEL                                — defaults to gemini-flash-lite-latest
+
+Trainees are stored in Redis (admin-managed at runtime, not in env vars).
+Their PIN is stored as-is (not hashed) — this is a low-stakes internal
+training tool, not a system holding sensitive personal data, so a 4-digit
+PIN is meant as friction against casual misuse, not real security.
 """
 import os
 import re
@@ -36,11 +48,14 @@ STAFF_PASSWORD = os.environ.get("STAFF_PASSWORD", "oh.explaincheck")
 REDIS_URL = os.environ.get("KV_REST_API_URL") or os.environ.get("UPSTASH_REDIS_REST_URL")
 REDIS_TOKEN = os.environ.get("KV_REST_API_TOKEN") or os.environ.get("UPSTASH_REDIS_REST_TOKEN")
 EXPLAIN_LIST_KEY = "explanations"
+TRAINEES_KEY = "trainees"  # redis hash: phone -> json trainee record
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
 EXPLAIN_MIN_TURNS = 2
 EXPLAIN_MAX_TURNS = 5
+
+CATEGORIES = ["art-design", "public-speaking", "robotics", "music", "chess"]
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -50,19 +65,30 @@ def _sign(payload: str) -> str:
     return hmac.new(SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
 
 
-def _make_token() -> str:
-    return base64.urlsafe_b64encode(f"staff.{_sign('staff')}".encode()).decode()
+def _make_token(role: str, sub: str = "") -> str:
+    payload = f"{role}:{sub}"
+    return base64.urlsafe_b64encode(f"{payload}.{_sign(payload)}".encode()).decode()
 
 
-def _check(authorization: Optional[str]) -> None:
+def _decode_token(authorization: Optional[str]) -> tuple:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "login required")
     try:
-        role, sig = base64.urlsafe_b64decode(authorization.split(" ", 1)[1].encode()).decode().rsplit(".", 1)
+        raw = base64.urlsafe_b64decode(authorization.split(" ", 1)[1].encode()).decode()
+        payload, sig = raw.rsplit(".", 1)
+        role, sub = payload.split(":", 1)
     except Exception:
         raise HTTPException(401, "login required")
-    if role != "staff" or not hmac.compare_digest(sig, _sign(role)):
+    if not hmac.compare_digest(sig, _sign(payload)):
         raise HTTPException(401, "login required")
+    return role, sub
+
+
+def _check(authorization: Optional[str], allowed_roles: Optional[set] = None) -> tuple:
+    role, sub = _decode_token(authorization)
+    if allowed_roles is not None and role not in allowed_roles:
+        raise HTTPException(403, "not allowed for this login")
+    return role, sub
 
 
 def _redis(*cmd):
@@ -75,6 +101,24 @@ def _redis(*cmd):
     )
     with urllib.request.urlopen(req, timeout=10) as r:
         return json.loads(r.read())
+
+
+def _get_trainee(phone: str) -> Optional[dict]:
+    res = _redis("HGET", TRAINEES_KEY, phone)
+    val = res.get("result")
+    return json.loads(val) if val else None
+
+
+def _list_trainees() -> list:
+    res = _redis("HGETALL", TRAINEES_KEY)
+    flat = res.get("result") or []
+    out = []
+    for i in range(1, len(flat), 2):
+        try:
+            out.append(json.loads(flat[i]))
+        except ValueError:
+            continue
+    return out
 
 
 def _q_words(q: str) -> set:
@@ -198,21 +242,82 @@ def _gemini_json(system: str, user_message: str) -> dict:
         raise HTTPException(502, f"model did not return valid JSON. Raw text: {text[:800]!r}. Full body: {json.dumps(body)[:800]}")
 
 
+# ---------- auth ----------
+
 @app.post("/api/login")
 async def login(req: Request):
+    """Staff (admin) login."""
     b = await req.json()
     email = (b.get("email") or "").strip().lower()
     password = b.get("password") or ""
     if email != STAFF_EMAIL or not hmac.compare_digest(password, STAFF_PASSWORD):
         raise HTTPException(401, "wrong email or password")
-    return {"token": _make_token()}
+    return {"token": _make_token("staff")}
 
+
+@app.post("/api/trainee/login")
+async def trainee_login(req: Request):
+    b = await req.json()
+    phone = (b.get("phone") or "").strip()
+    name = (b.get("name") or "").strip()
+    pin = (b.get("pin") or "").strip()
+    if not phone or not name or not pin:
+        raise HTTPException(400, "phone, name and pin are all required")
+    trainee = _get_trainee(phone)
+    if not trainee or trainee.get("name", "").strip().lower() != name.lower() or not hmac.compare_digest(str(trainee.get("pin", "")), pin):
+        raise HTTPException(401, "no match for that phone number, name and PIN")
+    return {
+        "token": _make_token("trainee", phone),
+        "name": trainee.get("name"),
+        "phone": phone,
+        "category": trainee.get("category"),
+        "cohort": trainee.get("cohort"),
+    }
+
+
+# ---------- admin: trainee management ----------
+
+@app.post("/api/admin/trainees")
+async def add_trainee(req: Request, authorization: Optional[str] = Header(None)):
+    _check(authorization, {"staff"})
+    b = await req.json()
+    phone = (b.get("phone") or "").strip()
+    name = (b.get("name") or "").strip()
+    pin = (b.get("pin") or "").strip()
+    category = (b.get("category") or "").strip()
+    cohort = (b.get("cohort") or "").strip()
+    if not phone or not name or not pin:
+        raise HTTPException(400, "phone, name and pin are required")
+    if category not in CATEGORIES:
+        raise HTTPException(400, f"category must be one of {CATEGORIES}")
+    rec = {
+        "phone": phone, "name": name, "pin": pin,
+        "category": category, "cohort": cohort,
+        "added_at": time.strftime("%Y-%m-%d %H:%M"),
+    }
+    _redis("HSET", TRAINEES_KEY, phone, json.dumps(rec, ensure_ascii=False))
+    return {"ok": True, "trainee": rec}
+
+
+@app.get("/api/admin/trainees")
+async def list_trainees(authorization: Optional[str] = Header(None)):
+    _check(authorization, {"staff"})
+    return _list_trainees()
+
+
+@app.get("/api/admin/categories")
+async def get_categories(authorization: Optional[str] = Header(None)):
+    _check(authorization, {"staff"})
+    return CATEGORIES
+
+
+# ---------- explanation quiz ----------
 
 @app.post("/api/explain/turn")
 async def explain_turn(req: Request, authorization: Optional[str] = Header(None)):
     """One turn of the game-explanation quiz. The client sends the full game
     reference data (from games-data.js) plus the conversation so far; this
-    returns either another follow-up question or the final 4-point score.
+    returns either another follow-up question or the final 5-point score.
     """
     _check(authorization)
     b = await req.json()
@@ -346,8 +451,17 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
 
 @app.post("/api/explain/save")
 async def explain_save(req: Request, authorization: Optional[str] = Header(None)):
-    _check(authorization)
+    role, sub = _check(authorization)
     b = await req.json()
+    trainee_phone = sub if role == "trainee" else (b.get("trainee_phone") or "")
+    category = b.get("category") or ""
+    cohort = b.get("cohort") or ""
+    if role == "trainee":
+        # trust the server-side trainee record for category/cohort, not the client
+        t = _get_trainee(sub)
+        if t:
+            category = t.get("category") or category
+            cohort = t.get("cohort") or cohort
     rec = {
         "id": base64.urlsafe_b64encode(os.urandom(6)).decode().rstrip("="),
         "received_at": time.strftime("%Y-%m-%d %H:%M"),
@@ -355,6 +469,9 @@ async def explain_save(req: Request, authorization: Optional[str] = Header(None)
         "game_name": b.get("game_name"),
         "age_band": b.get("age_band"),
         "trainee_name": (b.get("trainee_name") or "").strip(),
+        "trainee_phone": trainee_phone,
+        "category": category,
+        "cohort": cohort,
         "history": b.get("history") or [],
         "scores": b.get("scores") or {},
         "reasoning": b.get("reasoning") or "",
@@ -366,7 +483,16 @@ async def explain_save(req: Request, authorization: Optional[str] = Header(None)
 
 @app.get("/api/explanations")
 async def list_explanations(authorization: Optional[str] = Header(None)):
-    _check(authorization)
+    _check(authorization, {"staff"})
     res = _redis("LRANGE", EXPLAIN_LIST_KEY, "0", "999")
     rows = res.get("result") or []
     return [json.loads(x) for x in rows]
+
+
+@app.get("/api/my-explanations")
+async def my_explanations(authorization: Optional[str] = Header(None)):
+    role, sub = _check(authorization, {"trainee"})
+    res = _redis("LRANGE", EXPLAIN_LIST_KEY, "0", "999")
+    rows = res.get("result") or []
+    all_recs = [json.loads(x) for x in rows]
+    return [r for r in all_recs if r.get("trainee_phone") == sub]
