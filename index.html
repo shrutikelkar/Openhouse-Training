@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>game explanation check</title>
+<style>
+  :root{--cream:#F9F2E8;--subtle:#FDF8F1;--ink:#2C2B28;--muted:#6b675f;--line:#e7e0d4;
+    --coral:#F25E35;--mint:#A3C996;--mintd:#5b7d52;--ok:#3f8f4f;--warn:#C9962b;--stop:#C0492f;}
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,Nunito,Segoe UI,Helvetica,Arial,sans-serif;color:var(--ink);
+    margin:0;background:var(--cream);line-height:1.5}
+  .wrap{max-width:640px;margin:0 auto;padding:22px 18px 60px}
+  h1{font-size:22px;font-weight:800;margin:.2em 0}
+  .eyebrow{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--coral)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:14px}
+  input,select{width:100%;border:1px solid #d8d2c6;border-radius:10px;padding:10px 12px;font-size:15px;font-family:inherit;margin-bottom:8px;background:#fff}
+  .btn{background:var(--coral);color:#fff;border:none;border-radius:999px;padding:12px 20px;font-weight:800;font-size:15px;cursor:pointer}
+  .btn:disabled{opacity:.5;cursor:default}
+  .ghost{background:#fff;border:1px solid var(--line);border-radius:999px;padding:9px 16px;font-weight:700;font-size:13px;color:var(--muted);cursor:pointer}
+  .muted{color:var(--muted)}
+  .err{color:var(--stop);font-size:13px;margin-top:6px;display:none}
+  .pill{display:inline-block;background:var(--subtle);border:1px solid var(--line);border-radius:999px;padding:3px 11px;font-size:12px;font-weight:700;color:var(--muted);margin-right:6px}
+  .mic{width:84px;height:84px;border-radius:50%;border:none;background:var(--coral);color:#fff;font-size:30px;
+    display:grid;place-items:center;margin:18px auto;cursor:pointer;box-shadow:0 2px 8px rgba(242,94,53,.35)}
+  .mic.listening{background:var(--stop);animation:pulse 1.2s infinite}
+  .mic:disabled{opacity:.4;cursor:default;animation:none}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(192,73,47,.45)}70%{box-shadow:0 0 0 16px rgba(192,73,47,0)}100%{box-shadow:0 0 0 0 rgba(192,73,47,0)}}
+  .center{text-align:center}
+  .turn{border-radius:12px;padding:10px 13px;margin-bottom:8px;font-size:14px}
+  .turn.ai{background:var(--subtle);border:1px solid var(--line)}
+  .turn.trainee{background:#fff3ee;border:1px solid #f6d9cc}
+  .turn .lab{display:block;font-weight:800;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mintd);margin-bottom:2px}
+  .turn.trainee .lab{color:var(--coral)}
+  .live{min-height:24px;font-size:14px;color:var(--muted);font-style:italic;margin:6px 0}
+  .scorebar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+  .sc{border-radius:999px;padding:6px 13px;font-size:13px;font-weight:800}
+  .sc.yes{background:#e6f4e6;color:var(--ok)}
+  .sc.no{background:#fdecea;color:var(--stop)}
+  .badge-total{font-size:20px;font-weight:800;text-align:center;margin:6px 0 14px}
+  .feedback-box{background:var(--subtle);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+  .feedback-box .ft{font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mintd);margin-bottom:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div><div class="eyebrow">openhouse</div><h1>game explanation check</h1></div>
+  <div id="root"></div>
+</div>
+<script src="games-data.js"></script>
+<script>
+const TK='oh_explain_token';
+const root=document.getElementById('root');
+const API=(window.location.protocol==='file:'||window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:8000':'';
+
+function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
+
+let STATE={ game:null, ageBand:null, traineeName:'', history:[], phase:'setup', finalResult:null, queue:[], index:0, results:[] };
+let recognition=null, listening=false, liveText='', reviewMode=false;
+
+function authHeader(){ return {'Authorization':'Bearer '+localStorage.getItem(TK)}; }
+
+function loginView(msg){
+  root.innerHTML='';
+  const c=document.createElement('div'); c.className='card'; c.style.maxWidth='400px'; c.style.margin='10px auto';
+  c.innerHTML='<div style="font-weight:800;font-size:18px;margin-bottom:2px">sign in</div><div class="muted" style="font-size:13px;margin-bottom:12px">staff access to run the explanation check</div>';
+  const em=document.createElement('input'); em.placeholder='email';
+  const pw=document.createElement('input'); pw.type='password'; pw.placeholder='password';
+  const er=document.createElement('div'); er.className='err'; if(msg){er.textContent=msg;er.style.display='block';}
+  const b=document.createElement('button'); b.className='btn'; b.style.marginTop='8px'; b.style.width='100%'; b.textContent='sign in →';
+  async function go(){
+    b.disabled=true;b.textContent='signing in…';
+    try{
+      const r=await fetch(API+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:em.value,password:pw.value})});
+      if(!r.ok) throw new Error('Wrong email or password.');
+      const d=await r.json(); localStorage.setItem(TK,d.token); renderSetup();
+    }catch(e){ er.textContent=e.message; er.style.display='block'; b.disabled=false; b.textContent='sign in →'; }
+  }
+  b.onclick=go; pw.addEventListener('keydown',e=>{if(e.key==='Enter')go();});
+  c.append(em,pw,er,b); root.appendChild(c);
+}
+
+function speak(text){
+  return new Promise(resolve=>{
+    if(!('speechSynthesis' in window) || !text){ resolve(); return; }
+    const u=new SpeechSynthesisUtterance(text);
+    u.rate=0.98; u.onend=resolve; u.onerror=resolve;
+    // calling cancel() immediately before speak() is a known Chrome race bug
+    // that silently drops the utterance — only cancel if something is actually
+    // mid-speech, and give the engine a beat to settle before the next speak().
+    if(window.speechSynthesis.speaking || window.speechSynthesis.pending){
+      window.speechSynthesis.cancel();
+      setTimeout(()=>window.speechSynthesis.speak(u), 150);
+    } else {
+      window.speechSynthesis.speak(u);
+    }
+  });
+}
+
+function micSupported(){ return !!(window.SpeechRecognition||window.webkitSpeechRecognition); }
+
+function renderSetup(){
+  STATE={ game:null, ageBand:null, traineeName:'', history:[], phase:'setup', finalResult:null, queue:[], index:0, results:[] };
+  reviewMode=false; liveText=''; listening=false;
+  if(recognition){ try{recognition.stop();}catch(e){} }
+  root.innerHTML='';
+  const card=document.createElement('div'); card.className='card';
+  let html='<div style="font-weight:800;font-size:17px;margin-bottom:10px">start a check</div>'
+    +'<div class="muted" style="font-size:13px;margin-bottom:10px">covers all '+((window.GAMES||[]).length)+' games in one sitting — you can\'t skip any of them.</div>';
+  if(!micSupported()){
+    html+='<div class="err" style="display:block;margin-bottom:10px">This browser can\'t do speech recognition — use Chrome or Edge.</div>';
+  }
+  html+='<label class="muted" style="font-size:12px;font-weight:700">trainee name</label>';
+  card.innerHTML=html;
+  const nameInput=document.createElement('input'); nameInput.placeholder='e.g. Priya Sharma'; card.appendChild(nameInput);
+  const startBtn=document.createElement('button'); startBtn.className='btn'; startBtn.style.width='100%'; startBtn.style.marginTop='6px';
+  startBtn.textContent='start →'; startBtn.disabled=!micSupported();
+  startBtn.onclick=()=>{
+    if(!nameInput.value.trim()) return;
+    STATE.traineeName=nameInput.value.trim();
+    STATE.queue=[...(window.GAMES||[])];
+    STATE.index=0;
+    STATE.results=[];
+    startCurrentGame();
+  };
+  card.appendChild(startBtn);
+  const signout=document.createElement('button'); signout.className='ghost'; signout.style.marginTop='10px'; signout.textContent='sign out';
+  signout.onclick=()=>{ localStorage.removeItem(TK); loginView(); };
+  card.appendChild(signout);
+  root.appendChild(card);
+}
+
+function startCurrentGame(){
+  STATE.game=STATE.queue[STATE.index];
+  STATE.ageBand=Math.random()<0.5?'5–8':'8–12';
+  STATE.history=[];
+  STATE.finalResult=null;
+  reviewMode=false; liveText=''; listening=false;
+  if(recognition){ try{recognition.stop();}catch(e){} }
+  STATE.phase='intro';
+  renderIntro();
+}
+
+function renderIntro(){
+  root.innerHTML='';
+  const card=document.createElement('div'); card.className='card center';
+  card.innerHTML='<span class="pill">game '+(STATE.index+1)+' of '+STATE.queue.length+'</span><span class="pill">'+esc(STATE.game.name)+'</span><span class="pill">ages '+esc(STATE.ageBand)+'</span>'
+    +'<p style="margin-top:14px">Explain <b>'+esc(STATE.game.name)+'</b> out loud, as if you\'re briefing a group of children aged <b>'+esc(STATE.ageBand)+'</b>. Cover the goal, how to play, and how you\'d end it.</p>'
+    +'<p class="muted" style="font-size:13px">Tap the mic, speak your explanation, then tap "submit answer" when you\'re done. There\'ll be a couple of follow-up questions after.</p>';
+  const btn=document.createElement('button'); btn.className='btn'; btn.textContent='I\'m ready →';
+  btn.onclick=()=>{ STATE.phase='conversation'; renderConversation(); };
+  card.appendChild(btn);
+  root.appendChild(card);
+}
+
+function renderConversation(waitingForModel){
+  root.innerHTML='';
+  const card=document.createElement('div'); card.className='card';
+  card.innerHTML='<div style="margin-bottom:8px"><span class="pill">game '+(STATE.index+1)+' of '+STATE.queue.length+'</span><span class="pill">'+esc(STATE.game.name)+'</span><span class="pill">ages '+esc(STATE.ageBand)+'</span></div>';
+  const log=document.createElement('div');
+  STATE.history.forEach(h=>{
+    const d=document.createElement('div'); d.className='turn '+(h.role==='trainee'?'trainee':'ai');
+    d.innerHTML='<span class="lab">'+(h.role==='trainee'?'trainee':'ai')+'</span>'+esc(h.text);
+    if(h.role==='ai'){
+      const replay=document.createElement('button'); replay.className='ghost'; replay.style.cssText='margin-top:6px;font-size:11px;padding:4px 10px';
+      replay.textContent='🔊 replay'; replay.onclick=()=>speak(h.text);
+      d.appendChild(replay);
+    }
+    log.appendChild(d);
+  });
+  card.appendChild(log);
+
+  if(waitingForModel){
+    const w=document.createElement('div'); w.className='muted center'; w.style.margin='14px 0'; w.textContent='thinking…';
+    card.appendChild(w); root.appendChild(card); return;
+  }
+
+  if(reviewMode){
+    const label=document.createElement('div'); label.className='muted'; label.style.cssText='font-size:12px;font-weight:700;margin-top:10px';
+    label.textContent='review & fix the transcript before submitting — speech recognition isn\'t perfect';
+    card.appendChild(label);
+    const ta=document.createElement('textarea'); ta.id='reviewBox'; ta.value=liveText.trim();
+    ta.style.cssText='width:100%;min-height:90px;border:1px solid #d8d2c6;border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;margin:6px 0 10px';
+    ta.addEventListener('paste', e=>e.preventDefault());
+    ta.addEventListener('drop', e=>e.preventDefault());
+    card.appendChild(ta);
+    const row=document.createElement('div'); row.style.cssText='display:flex;gap:8px';
+    const rerecord=document.createElement('button'); rerecord.className='ghost'; rerecord.textContent='🎙 re-record instead';
+    rerecord.onclick=()=>{ reviewMode=false; liveText=''; renderConversation(); };
+    const submitBtn=document.createElement('button'); submitBtn.className='btn'; submitBtn.style.flex='1'; submitBtn.textContent='submit answer';
+    submitBtn.onclick=()=>submitAnswer(ta.value);
+    row.append(rerecord,submitBtn);
+    card.appendChild(row);
+    root.appendChild(card);
+    return;
+  }
+
+  const live=document.createElement('div'); live.className='live'; live.id='liveText';
+  card.appendChild(live);
+
+  const mic=document.createElement('button'); mic.className='mic'; mic.id='micBtn'; mic.textContent='🎙';
+  mic.onclick=toggleListening;
+  const wrap=document.createElement('div'); wrap.className='center'; wrap.appendChild(mic);
+  card.appendChild(wrap);
+
+  const hint=document.createElement('div'); hint.className='muted center'; hint.style.fontSize='12px';
+  hint.textContent='tap to speak, tap again when done — you\'ll get a chance to review the text first';
+  card.appendChild(hint);
+
+  root.appendChild(card);
+}
+
+function toggleListening(){
+  if(listening){ stopListening(); return; }
+  const Rec=window.SpeechRecognition||window.webkitSpeechRecognition;
+  recognition=new Rec();
+  recognition.continuous=true; recognition.interimResults=true; recognition.lang='en-IN';
+  liveText='';
+  recognition.onresult=(e)=>{
+    let interim='', final='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const t=e.results[i][0].transcript;
+      if(e.results[i].isFinal) final+=t+' '; else interim+=t;
+    }
+    if(final) liveText+=final;
+    const lt=document.getElementById('liveText');
+    if(lt) lt.textContent=liveText+interim;
+  };
+  recognition.onerror=()=>{ stopListening(); };
+  recognition.onend=()=>{
+    listening=false;
+    if(liveText.trim()){ reviewMode=true; renderConversation(); }
+    else { const m=document.getElementById('micBtn'); if(m) m.classList.remove('listening'); }
+  };
+  recognition.start();
+  listening=true;
+  const m=document.getElementById('micBtn'); if(m) m.classList.add('listening');
+}
+function stopListening(){
+  if(recognition){ try{recognition.stop();}catch(e){} }
+  listening=false;
+}
+
+async function submitAnswer(rawText){
+  const text=(rawText||'').trim();
+  if(!text) return;
+  reviewMode=false;
+  STATE.history.push({role:'trainee', text});
+  renderConversation(true);
+  try{
+    const r=await fetch(API+'/api/explain/turn',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},authHeader()),
+      body:JSON.stringify({game:STATE.game, age_band:STATE.ageBand, history:STATE.history})});
+    if(r.status===401){ localStorage.removeItem(TK); loginView('Session expired — sign in again.'); return; }
+    const d=await r.json();
+    if(!r.ok){
+      STATE.history.push({role:'ai', text:'⚠ server error: '+(d.detail||('HTTP '+r.status))});
+      renderConversation();
+      return;
+    }
+    if(d.action==='final'){
+      STATE.finalResult=d;
+      renderFinal();
+    } else {
+      STATE.history.push({role:'ai', text:d.question||('What materials would you need to run '+STATE.game.name+'?')});
+      renderConversation();
+      await speak(d.question||'');
+    }
+  }catch(e){
+    STATE.history.push({role:'ai', text:'(connection error — could not reach the scoring service)'});
+    renderConversation();
+  }
+}
+
+function renderFinal(){
+  root.innerHTML='';
+  const s=(STATE.finalResult||{}).scores||{};
+  const total=['age_appropriateness','clarity','accuracy','genuine'].reduce((n,k)=>n+(s[k]?1:0),0);
+  const card=document.createElement('div'); card.className='card';
+  card.innerHTML='<div style="font-weight:800;font-size:17px;margin-bottom:6px">result — '+esc(STATE.game.name)+'</div>'
+    +'<div class="badge-total">'+total+' / 4</div>'
+    +'<div class="scorebar">'
+      +'<span class="sc '+(s.age_appropriateness?'yes':'no')+'">'+(s.age_appropriateness?'✓':'✗')+' age fit (ages '+esc(STATE.ageBand)+')</span>'
+      +'<span class="sc '+(s.clarity?'yes':'no')+'">'+(s.clarity?'✓':'✗')+' clarity</span>'
+      +'<span class="sc '+(s.accuracy?'yes':'no')+'">'+(s.accuracy?'✓':'✗')+' accuracy</span>'
+      +'<span class="sc '+(s.genuine?'yes':'no')+'">'+(s.genuine?'✓':'✗')+' genuine</span>'
+    +'</div>'
+    +(STATE.finalResult.reasoning?'<div class="muted" style="font-size:13.5px;margin-bottom:12px">'+esc(STATE.finalResult.reasoning)+'</div>':'');
+  const isLast=STATE.index>=STATE.queue.length-1;
+  const saveBtn=document.createElement('button'); saveBtn.className='btn'; saveBtn.style.width='100%';
+  saveBtn.textContent=isLast?'save & finish all checks':'save & continue → game '+(STATE.index+2)+' of '+STATE.queue.length;
+  saveBtn.onclick=async()=>{
+    saveBtn.disabled=true; saveBtn.textContent='saving…';
+    try{
+      await fetch(API+'/api/explain/save',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},authHeader()),body:JSON.stringify({
+        game_id:STATE.game.id, game_name:STATE.game.name, age_band:STATE.ageBand, trainee_name:STATE.traineeName,
+        history:STATE.history, scores:s, reasoning:STATE.finalResult.reasoning||''
+      })});
+      STATE.results.push({game_name:STATE.game.name, age_band:STATE.ageBand, scores:s, reasoning:STATE.finalResult.reasoning||''});
+      if(isLast){ renderSummary(); }
+      else { STATE.index+=1; startCurrentGame(); }
+    }catch(e){ saveBtn.textContent='could not save — try again'; saveBtn.disabled=false; }
+  };
+  card.appendChild(saveBtn);
+  root.appendChild(card);
+}
+
+function renderSummary(){
+  root.innerHTML='';
+  const card=document.createElement('div'); card.className='card';
+  const CRITERIA=['age_appropriateness','clarity','accuracy','genuine'];
+  const LABELS={age_appropriateness:'age fit',clarity:'clarity',accuracy:'accuracy',genuine:'genuine (own words, not read)'};
+  const grand=STATE.results.reduce((n,r)=>n+CRITERIA.reduce((m,k)=>m+(r.scores[k]?1:0),0),0);
+  card.innerHTML='<div style="font-weight:800;font-size:18px;margin-bottom:2px">all checks complete — '+esc(STATE.traineeName)+'</div>'
+    +'<div class="muted" style="font-size:13px;margin-bottom:14px">'+STATE.results.length+' games · '+grand+' / '+(STATE.results.length*4)+' total</div>';
+
+  // consolidated feedback — which criteria came up short, and how often
+  const misses={};
+  STATE.results.forEach(r=>{ CRITERIA.forEach(k=>{ if(!r.scores[k]) misses[k]=(misses[k]||0)+1; }); });
+  const missKeys=Object.keys(misses).sort((a,b)=>misses[b]-misses[a]);
+  const fb=document.createElement('div'); fb.className='feedback-box';
+  if(missKeys.length){
+    let inner='<div class="ft">areas to work on</div>';
+    missKeys.forEach(k=>{ inner+='<div style="font-size:13.5px;margin-bottom:4px">• <b>'+LABELS[k]+'</b> — missed in '+misses[k]+' of '+STATE.results.length+' game'+(STATE.results.length>1?'s':'')+'</div>'; });
+    fb.innerHTML=inner;
+  } else {
+    fb.innerHTML='<div class="ft">areas to work on</div><div style="font-size:13.5px">No repeated weak spots — strong across the board.</div>';
+  }
+  card.appendChild(fb);
+
+  STATE.results.forEach(r=>{
+    const total=CRITERIA.reduce((n,k)=>n+(r.scores[k]?1:0),0);
+    const row=document.createElement('div'); row.style.cssText='padding:8px 0;border-bottom:1px dashed #efe9dd;font-size:14px';
+    let inner='<div style="display:flex;align-items:center;gap:8px"><span style="flex:1"><b>'+esc(r.game_name)+'</b> <span class="muted">(ages '+esc(r.age_band)+')</span></span><span class="pill">'+total+'/4</span></div>';
+    if(total<4 && r.reasoning){
+      inner+='<div class="muted" style="font-size:12.5px;margin-top:3px">'+esc(r.reasoning)+'</div>';
+    }
+    row.innerHTML=inner;
+    card.appendChild(row);
+  });
+  const doneBtn=document.createElement('button'); doneBtn.className='btn'; doneBtn.style.cssText='width:100%;margin-top:16px'; doneBtn.textContent='start next trainee';
+  doneBtn.onclick=renderSetup;
+  card.appendChild(doneBtn);
+  root.appendChild(card);
+}
+
+if(!localStorage.getItem(TK)) loginView(); else renderSetup();
+</script>
+</body>
+</html>

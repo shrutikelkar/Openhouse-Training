@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>game explanation · dashboard</title>
+<style>
+  :root{--cream:#F9F2E8;--subtle:#FDF8F1;--ink:#2C2B28;--muted:#6b675f;--line:#e7e0d4;
+    --coral:#F25E35;--mint:#A3C996;--mintd:#5b7d52;--ok:#3f8f4f;--warn:#C9962b;--stop:#C0492f;}
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,Nunito,Segoe UI,Helvetica,Arial,sans-serif;color:var(--ink);
+    margin:0;background:var(--cream);line-height:1.5}
+  .wrap{max-width:920px;margin:0 auto;padding:22px 18px 60px}
+  h1{font-size:24px;font-weight:800;margin:.2em 0}
+  .eyebrow{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--coral)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:14px}
+  input,select{width:100%;border:1px solid #d8d2c6;border-radius:10px;padding:10px 12px;font-size:15px;font-family:inherit;margin-bottom:8px}
+  .btn{background:var(--coral);color:#fff;border:none;border-radius:999px;padding:11px 18px;font-weight:800;font-size:15px;cursor:pointer}
+  .btn:disabled{opacity:.5}
+  .muted{color:var(--muted)}
+  .err{color:var(--stop);font-size:13px;margin-top:6px;display:none}
+  .pill{background:var(--subtle);border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;color:var(--muted)}
+  .topbar{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .topbar .sp{flex:1}
+  .ghost{background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 13px;font-weight:700;font-size:12px;color:var(--muted);cursor:pointer}
+  .empty{text-align:center;color:var(--muted);padding:40px 0}
+  .section{background:var(--subtle);border:1px solid var(--line);border-radius:13px;padding:14px 13px;margin-bottom:16px}
+  .section:last-child{margin-bottom:0}
+  .section-title{font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mintd);margin-bottom:10px}
+  .stat-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+  .stat{flex:1;min-width:130px;background:#fff;border:1px solid var(--line);border-radius:13px;padding:12px 14px}
+  .stat .n{font-size:24px;font-weight:800}
+  .stat .l{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .sum-table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:420px}
+  .sum-table th{text-align:left;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--mintd);padding:6px 8px;border-bottom:2px solid var(--line);white-space:nowrap}
+  .sum-table td{padding:7px 8px;border-bottom:1px dashed #efe9dd;vertical-align:middle}
+  .sum-table tr:last-child td{border-bottom:none}
+  .yn-yes{display:inline-block;background:#e6f4e6;color:var(--ok);font-weight:800;border-radius:6px;padding:2px 8px;font-size:12px}
+  .yn-no{display:inline-block;background:#fdecea;color:var(--stop);font-weight:800;border-radius:6px;padding:2px 8px;font-size:12px}
+  .yn-pct{font-size:12px;color:var(--muted)}
+  .record{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px}
+  .record-head{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;margin-bottom:8px}
+  .txt{background:var(--subtle);border-radius:10px;padding:10px 12px;font-size:13.5px;margin:6px 0}
+  .txt .lab{font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mintd);display:block;margin-bottom:2px}
+  .filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+  .filters select{width:auto;margin-bottom:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div><div class="eyebrow">openhouse · trainee checks</div><h1>game explanation dashboard</h1></div>
+    <div class="sp"></div>
+    <button class="ghost" id="refresh" style="display:none">refresh</button>
+    <button class="ghost" id="signout" style="display:none">sign out</button>
+  </div>
+  <div id="root"></div>
+</div>
+<script>
+const TK='oh_explain_token';
+const root=document.getElementById('root');
+const API=(window.location.protocol==='file:'||window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:8000':'';
+let ALL=[], GAME_FILTER='', TRAINEE_FILTER='';
+
+function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
+function sect(title,inner){return '<div class="section"><div class="section-title">'+title+'</div>'+inner+'</div>';}
+
+function loginView(msg){
+  document.getElementById('refresh').style.display='none';
+  document.getElementById('signout').style.display='none';
+  root.innerHTML='';
+  const c=document.createElement('div'); c.className='card'; c.style.maxWidth='400px'; c.style.margin='10px auto';
+  c.innerHTML='<div style="font-weight:800;font-size:18px;margin-bottom:2px">sign in</div><div class="muted" style="font-size:13px;margin-bottom:12px">admin access</div>';
+  const em=document.createElement('input'); em.placeholder='email';
+  const pw=document.createElement('input'); pw.type='password'; pw.placeholder='password';
+  const er=document.createElement('div'); er.className='err'; if(msg){er.textContent=msg;er.style.display='block';}
+  const b=document.createElement('button'); b.className='btn'; b.style.marginTop='8px'; b.style.width='100%'; b.textContent='sign in →';
+  async function go(){
+    b.disabled=true;b.textContent='signing in…';
+    try{
+      const r=await fetch(API+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:em.value,password:pw.value})});
+      if(!r.ok) throw new Error('Wrong email or password.');
+      const d=await r.json(); localStorage.setItem(TK,d.token); load();
+    }catch(e){ er.textContent=e.message; er.style.display='block'; b.disabled=false; b.textContent='sign in →'; }
+  }
+  b.onclick=go; pw.addEventListener('keydown',e=>{if(e.key==='Enter')go();});
+  c.append(em,pw,er,b); root.appendChild(c);
+}
+
+function scoreTotal(r){ const s=r.scores||{}; return ['age_appropriateness','clarity','accuracy','genuine'].reduce((n,k)=>n+(s[k]?1:0),0); }
+
+function summaryStats(list){
+  const n=list.length;
+  if(!n) return {n:0};
+  const avg=(list.reduce((sum,r)=>sum+scoreTotal(r),0)/n);
+  const pct=(key)=>Math.round(100*list.filter(r=>(r.scores||{})[key]).length/n);
+  return { n, avg:avg.toFixed(1), age:pct('age_appropriateness'), clarity:pct('clarity'), accuracy:pct('accuracy'), genuine:pct('genuine') };
+}
+
+function byGameTable(list){
+  const groups={};
+  list.forEach(r=>{ const k=r.game_name||'(unknown)'; (groups[k]=groups[k]||[]).push(r); });
+  const keys=Object.keys(groups).sort();
+  if(!keys.length) return '<div class="muted" style="font-size:13px;padding:8px 0">No data.</div>';
+  let html='<div class="table-wrap"><table class="sum-table"><thead><tr><th>Game</th><th>checks</th><th>avg score</th></tr></thead><tbody>';
+  keys.forEach(k=>{
+    const obs=groups[k];
+    const avg=(obs.reduce((s,r)=>s+scoreTotal(r),0)/obs.length).toFixed(1);
+    html+='<tr><td><b>'+esc(k)+'</b></td><td>'+obs.length+'</td><td>'+avg+' / 4</td></tr>';
+  });
+  html+='</tbody></table></div>';
+  return html;
+}
+
+function recordsView(list){
+  if(!list.length) return '<div class="empty">No game explanations match this filter.</div>';
+  const sorted=[...list].sort((a,b)=>(b.received_at||'').localeCompare(a.received_at||''));
+  const scoreLabels={age_appropriateness:'age fit',clarity:'clarity',accuracy:'accuracy',genuine:'genuine'};
+  return sorted.map((r,idx)=>{
+    const s=r.scores||{};
+    const total=scoreTotal(r);
+    const uid='expl-'+idx+'-'+(r.id||'');
+    let html='<div class="record">';
+    html+='<div class="record-head">';
+    html+='<span style="font-weight:800;font-size:15px">'+esc(r.trainee_name||'(unnamed trainee)')+'</span>';
+    html+='<span class="pill">'+esc(r.game_name||'')+'</span>';
+    html+='<span class="pill">ages '+esc(r.age_band||'?')+'</span>';
+    html+='<span class="muted" style="font-size:12px;margin-left:auto">'+esc(r.received_at||'')+'</span>';
+    html+='</div>';
+    html+='<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">';
+    ['age_appropriateness','clarity','accuracy','genuine'].forEach(k=>{
+      const ok=!!s[k];
+      html+='<span class="'+(ok?'yn-yes':'yn-no')+'" style="font-size:11px">'+(ok?'✓':'✗')+' '+scoreLabels[k]+'</span>';
+    });
+    html+='<span class="pill" style="margin-left:4px">'+total+'/4</span>';
+    html+='</div>';
+    if(r.reasoning) html+='<div class="txt"><span class="lab">scoring notes</span>'+esc(r.reasoning)+'</div>';
+    html+='<button class="ghost" style="margin-top:4px" onclick="const t=document.getElementById(\''+uid+'\');t.style.display=t.style.display===\'none\'?\'block\':\'none\'">view transcript</button>';
+    html+='<div id="'+uid+'" style="display:none;margin-top:10px">';
+    (r.history||[]).forEach(turn=>{
+      const who=turn.role==='trainee'?'trainee':'ai';
+      html+='<div class="txt"><span class="lab">'+who+'</span>'+esc(turn.text||'')+'</div>';
+    });
+    html+='</div>';
+    html+='</div>';
+    return html;
+  }).join('');
+}
+
+function render(list){
+  ALL=list;
+  document.getElementById('refresh').style.display='inline-block';
+  document.getElementById('signout').style.display='inline-block';
+  root.innerHTML='';
+
+  if(!list.length){ root.innerHTML='<div class="empty">No game explanations recorded yet.</div>'; return; }
+
+  const games=[...new Set(list.map(r=>r.game_name).filter(Boolean))].sort();
+  const trainees=[...new Set(list.map(r=>r.trainee_name).filter(Boolean))].sort();
+
+  const filterRow=document.createElement('div'); filterRow.className='filters';
+  filterRow.innerHTML='<span style="font-weight:800;font-size:13px;color:var(--mintd)">Filter</span>'
+    +'<select id="game-select"><option value="">All games</option>'+games.map(g=>'<option value="'+esc(g)+'"'+(g===GAME_FILTER?' selected':'')+'>'+esc(g)+'</option>').join('')+'</select>'
+    +'<select id="trainee-select"><option value="">All trainees</option>'+trainees.map(t=>'<option value="'+esc(t)+'"'+(t===TRAINEE_FILTER?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select>';
+  root.appendChild(filterRow);
+
+  const filtered=list.filter(r=>(!GAME_FILTER||r.game_name===GAME_FILTER)&&(!TRAINEE_FILTER||r.trainee_name===TRAINEE_FILTER));
+  const stats=summaryStats(filtered);
+
+  const card=document.createElement('div'); card.className='card';
+  let html='';
+  if(stats.n){
+    html+='<div class="stat-row">'
+      +'<div class="stat"><div class="n">'+stats.n+'</div><div class="l">checks</div></div>'
+      +'<div class="stat"><div class="n">'+stats.avg+' / 4</div><div class="l">avg score</div></div>'
+      +'<div class="stat"><div class="n">'+stats.age+'%</div><div class="l">age fit</div></div>'
+      +'<div class="stat"><div class="n">'+stats.clarity+'%</div><div class="l">clarity</div></div>'
+      +'<div class="stat"><div class="n">'+stats.accuracy+'%</div><div class="l">accuracy</div></div>'
+      +'<div class="stat"><div class="n">'+stats.genuine+'%</div><div class="l">genuine</div></div>'
+      +'</div>';
+  }
+  html+=sect('By game',byGameTable(filtered));
+  html+=sect('All checks — '+filtered.length,recordsView(filtered));
+  card.innerHTML=html;
+  root.appendChild(card);
+
+  const gs=document.getElementById('game-select');
+  if(gs) gs.onchange=()=>{ GAME_FILTER=gs.value; render(ALL); };
+  const ts=document.getElementById('trainee-select');
+  if(ts) ts.onchange=()=>{ TRAINEE_FILTER=ts.value; render(ALL); };
+}
+
+async function load(){
+  const t=localStorage.getItem(TK);
+  if(!t){ loginView(); return; }
+  root.innerHTML='<div class="empty">loading…</div>';
+  try{
+    const r=await fetch(API+'/api/explanations',{headers:{'Authorization':'Bearer '+t}});
+    if(r.status===401){ localStorage.removeItem(TK); loginView('Session expired — sign in again.'); return; }
+    render(await r.json());
+  }catch(e){ root.innerHTML='<div class="empty">Could not load — is the server running?</div>'; }
+}
+document.getElementById('refresh').onclick=load;
+document.getElementById('signout').onclick=()=>{localStorage.removeItem(TK);loginView();};
+load();
+</script>
+</body>
+</html>
