@@ -49,6 +49,10 @@ function loginView(msg){
   }
   b.onclick=go; pin.addEventListener('keydown',e=>{if(e.key==='Enter')go();});
   c.append(ph,nm,pin,er,b); root.appendChild(c);
+
+  const adminLink=document.createElement('div'); adminLink.style.cssText='text-align:center;margin-top:14px';
+  adminLink.innerHTML='<a href="dashboard.html" style="color:var(--muted);font-size:13px;font-weight:700;text-decoration:none">admin? sign in to the dashboard →</a>';
+  root.appendChild(adminLink);
 }
 
 function speak(text){
