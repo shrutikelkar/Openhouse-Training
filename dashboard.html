@@ -284,6 +284,30 @@ function traineesTab(){
   });
 }
 
+function reattemptsView(){
+  const byKey={};
+  ALL.forEach(r=>{
+    const key=(r.trainee_phone||r.trainee_name||'')+'::'+r.game_id;
+    (byKey[key]=byKey[key]||[]).push(r);
+  });
+  const reattempted=Object.values(byKey).filter(list=>list.length>1);
+  if(!reattempted.length) return '<div class="muted" style="font-size:13px;padding:8px 0">No re-attempts recorded yet.</div>';
+  let html='<div class="table-wrap"><table class="sum-table"><thead><tr><th>Trainee</th><th>Game</th><th>1st attempt</th><th>2nd attempt</th><th>change</th></tr></thead><tbody>';
+  reattempted.forEach(list=>{
+    const sorted=[...list].sort((a,b)=>(a.received_at||'').localeCompare(b.received_at||''));
+    const first=sorted[0], last=sorted[sorted.length-1];
+    const ft=scoreTotal(first), lt=scoreTotal(last);
+    const delta=lt-ft;
+    const deltaStr=delta>0?('▲ +'+delta):(delta<0?('▼ '+delta):'– no change');
+    const deltaColor=delta>0?'var(--sage)':(delta<0?'var(--stop)':'var(--muted)');
+    html+='<tr><td><b>'+esc(first.trainee_name||'?')+'</b></td><td>'+esc(first.game_name||first.game_id||'')+'</td>'
+      +'<td>'+ft+'/5</td><td>'+lt+'/5</td>'
+      +'<td style="color:'+deltaColor+';font-weight:800">'+deltaStr+'</td></tr>';
+  });
+  html+='</tbody></table></div>';
+  return html;
+}
+
 function accuracyTab(){
   const card=document.createElement('div'); card.className='card';
   let html='<div style="font-weight:800;font-size:16px;margin-bottom:10px">scores by trainee</div>'
@@ -312,6 +336,10 @@ function accuracyTab(){
   }
   card.innerHTML=html;
   root.appendChild(card);
+
+  const reCard=document.createElement('div'); reCard.className='card';
+  reCard.innerHTML=sect('Re-attempts — before vs after', reattemptsView());
+  root.appendChild(reCard);
 }
 function ynBadge(pct){
   if(pct===null||pct===undefined) return '<span class="yn-pct">—</span>';
