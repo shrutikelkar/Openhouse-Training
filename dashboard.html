@@ -204,35 +204,32 @@ function traineesTab(){
   const nm=document.createElement('input'); nm.placeholder='name';
   const ph=document.createElement('input'); ph.placeholder='phone number'; ph.type='tel';
   const em=document.createElement('input'); em.placeholder='email (optional — sends them their login)'; em.type='email';
-  const pin=document.createElement('input'); pin.placeholder='4-digit PIN they will log in with';
   const cat=document.createElement('select');
   ['art-design','public-speaking','robotics','music','chess'].forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; cat.appendChild(o); });
   const cohLabel=document.createElement('div'); cohLabel.className='muted'; cohLabel.style.cssText='font-size:12px;font-weight:700;margin:2px 0 4px';
-  cohLabel.textContent='cohort start date';
+  cohLabel.textContent='cohort start date (also sets their PIN — day+month, DDMM)';
   const coh=document.createElement('input'); coh.type='date';
   const er=document.createElement('div'); er.className='err';
   const ok=document.createElement('div'); ok.style.cssText='color:var(--sage);font-size:13px;margin-top:6px;display:none';
   const addBtn=document.createElement('button'); addBtn.className='btn'; addBtn.style.width='100%'; addBtn.textContent='add trainee';
   addBtn.onclick=async()=>{
-    if(!nm.value.trim()||!ph.value.trim()||!pin.value.trim()){ er.textContent='name, phone and PIN are required'; er.style.display='block'; return; }
+    if(!nm.value.trim()||!ph.value.trim()||!coh.value.trim()){ er.textContent='name, phone and cohort start date are required'; er.style.display='block'; return; }
     addBtn.disabled=true; addBtn.textContent='adding…'; ok.style.display='none';
     try{
       const r=await fetch(API+'/api/admin/trainees',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},{'Authorization':'Bearer '+localStorage.getItem(TK)}),
-        body:JSON.stringify({name:nm.value.trim(),phone:ph.value.trim(),pin:pin.value.trim(),category:cat.value,cohort:coh.value.trim(),email:em.value.trim()})});
+        body:JSON.stringify({name:nm.value.trim(),phone:ph.value.trim(),category:cat.value,cohort:coh.value.trim(),email:em.value.trim()})});
       const d=await r.json();
       if(!r.ok) throw new Error(d.detail||'could not add trainee');
       er.style.display='none';
-      if(em.value.trim()){
-        ok.textContent = d.email_sent ? 'Trainee added — welcome email sent.' : 'Trainee added — email could not be sent (check SMTP setup or the address).';
-        ok.style.color = d.email_sent ? 'var(--sage)' : 'var(--warn)';
-        ok.style.display='block';
-      }
-      nm.value=''; ph.value=''; em.value=''; pin.value=''; coh.value='';
+      let msg='Trainee added — PIN is '+esc(d.trainee.pin)+'.';
+      if(em.value.trim()) msg += d.email_sent ? ' Welcome email sent.' : ' Email could not be sent (check SMTP setup or the address).';
+      ok.textContent=msg; ok.style.color = (em.value.trim() && !d.email_sent) ? 'var(--warn)' : 'var(--sage)'; ok.style.display='block';
+      nm.value=''; ph.value=''; em.value=''; coh.value='';
       await loadTrainees(); render();
     }catch(e){ er.textContent=e.message; er.style.display='block'; }
     addBtn.disabled=false; addBtn.textContent='add trainee';
   };
-  formCard.append(nm,ph,em,pin,cat,cohLabel,coh,er,ok,addBtn);
+  formCard.append(nm,ph,em,cat,cohLabel,coh,er,ok,addBtn);
   root.appendChild(formCard);
 
   const listCard=document.createElement('div'); listCard.className='card';

@@ -342,18 +342,24 @@ def _send_welcome_email(to_email: str, trainee: dict, site_url: str) -> bool:
 
 @app.post("/api/admin/trainees")
 async def add_trainee(req: Request, authorization: Optional[str] = Header(None)):
+    """PIN is not chosen by the admin — it's always derived from the cohort's
+    start date as DDMM, so it's never trusted from the client."""
     _check(authorization, {"staff"})
     b = await req.json()
     phone = (b.get("phone") or "").strip()
     name = (b.get("name") or "").strip()
-    pin = (b.get("pin") or "").strip()
     category = (b.get("category") or "").strip()
     cohort = (b.get("cohort") or "").strip()
     email = (b.get("email") or "").strip()
-    if not phone or not name or not pin:
-        raise HTTPException(400, "phone, name and pin are required")
+    if not phone or not name or not cohort:
+        raise HTTPException(400, "phone, name and cohort start date are required")
     if category not in CATEGORIES:
         raise HTTPException(400, f"category must be one of {CATEGORIES}")
+    try:
+        y, m, d = cohort.split("-")
+        pin = f"{int(d):02d}{int(m):02d}"
+    except ValueError:
+        raise HTTPException(400, "cohort must be a valid date (YYYY-MM-DD)")
     rec = {
         "phone": phone, "name": name, "pin": pin,
         "category": category, "cohort": cohort, "email": email,
