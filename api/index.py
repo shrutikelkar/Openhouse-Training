@@ -38,7 +38,7 @@ REDIS_TOKEN = os.environ.get("KV_REST_API_TOKEN") or os.environ.get("UPSTASH_RED
 EXPLAIN_LIST_KEY = "explanations"
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
 EXPLAIN_MIN_TURNS = 2
 EXPLAIN_MAX_TURNS = 5
 
