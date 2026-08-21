@@ -25,6 +25,24 @@ let ALL=[], TRAINEES=[], ACTIVE_TAB='responses', GAME_FILTER='', TRAINEE_FILTER=
 
 function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
 function sect(title,inner){return '<div class="section"><div class="section-title">'+title+'</div>'+inner+'</div>';}
+function fmtDate(iso){ if(!iso) return '—'; const d=new Date(iso); return isNaN(d)?esc(iso):d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); }
+
+// word-level diff: highlights words in `text` that weren't in `original` (LCS-based)
+function diffHighlight(original, text){
+  const a=original.trim().split(/\s+/), b=text.trim().split(/\s+/);
+  const m=a.length, n=b.length;
+  const dp=Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  for(let i=m-1;i>=0;i--) for(let j=n-1;j>=0;j--)
+    dp[i][j] = a[i]===b[j] ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j],dp[i][j+1]);
+  let i=0,j=0, out=[];
+  while(i<m && j<n){
+    if(a[i]===b[j]){ out.push(esc(b[j])); i++; j++; }
+    else if(dp[i+1][j]>=dp[i][j+1]) i++;
+    else { out.push('<mark class="edit-mark">'+esc(b[j])+'</mark>'); j++; }
+  }
+  while(j<n){ out.push('<mark class="edit-mark">'+esc(b[j])+'</mark>'); j++; }
+  return out.join(' ');
+}
 
 function loginView(msg){
   document.getElementById('refresh').style.display='none';
@@ -73,21 +91,35 @@ function byGameTable(list){
   return html;
 }
 
+// first (oldest) record per trainee_phone+game_id, computed against the FULL
+// dataset so filtering the visible list never changes what counts as a re-attempt
+function firstAttemptIds(){
+  const earliest={};
+  ALL.forEach(r=>{
+    const key=(r.trainee_phone||r.trainee_name||'')+'::'+r.game_id;
+    if(!earliest[key] || (r.received_at||'')<(earliest[key].received_at||'')) earliest[key]=r;
+  });
+  return new Set(Object.values(earliest).map(r=>r.id));
+}
+
 function recordsView(list){
   if(!list.length) return '<div class="empty">No game explanations match this filter.</div>';
   const sorted=[...list].sort((a,b)=>(b.received_at||'').localeCompare(a.received_at||''));
+  const firstIds=firstAttemptIds();
   const scoreLabels={age_appropriateness:'age fit',clarity:'clarity',gameplay_accuracy:'gameplay accuracy',challenge_accuracy:'challenge accuracy',genuine:'genuine'};
   return sorted.map((r,idx)=>{
     const s=r.scores||{};
     const total=scoreTotal(r);
     const uid='expl-'+idx+'-'+(r.id||'');
+    const isReattempt=r.id && !firstIds.has(r.id);
     let html='<div class="record">';
     html+='<div class="record-head">';
     html+='<span style="font-weight:800;font-size:15px">'+esc(r.trainee_name||'(unnamed trainee)')+'</span>';
     html+='<span class="pill coral">'+esc(r.game_name||'')+'</span>';
     html+='<span class="pill teal">ages '+esc(r.age_band||'?')+'</span>';
+    if(isReattempt) html+='<span class="pill" style="background:#FDE9C8;color:#8a5a00;border-color:transparent">↻ re-attempt</span>';
     if(r.category) html+='<span class="pill">'+esc(r.category)+'</span>';
-    if(r.cohort) html+='<span class="pill">'+esc(r.cohort)+'</span>';
+    if(r.cohort) html+='<span class="pill">'+fmtDate(r.cohort)+'</span>';
     html+='<span class="muted" style="font-size:12px;margin-left:auto">'+esc(r.received_at||'')+'</span>';
     html+='</div>';
     html+='<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">';
@@ -98,12 +130,14 @@ function recordsView(list){
     html+='<span class="pill" style="margin-left:4px">'+total+'/5</span>';
     html+='</div>';
     if(r.reasoning) html+='<div class="txt"><span class="lab">scoring notes</span>'+esc(r.reasoning)+'</div>';
+    if(r.suggestion) html+='<div class="txt" style="background:var(--coral-tint)"><span class="lab">🎯 suggestion</span>'+esc(r.suggestion)+'</div>';
     if(r.new_idea) html+='<div class="txt" style="background:var(--teal-tint)"><span class="lab">💡 new idea</span>'+esc(r.new_idea)+'</div>';
     html+='<button class="ghost" style="margin-top:4px" onclick="const t=document.getElementById(\''+uid+'\');t.style.display=t.style.display===\'none\'?\'block\':\'none\'">view transcript</button>';
     html+='<div id="'+uid+'" style="display:none;margin-top:10px">';
     (r.history||[]).forEach(turn=>{
       const who=turn.role==='trainee'?(r.trainee_name||'trainee'):'Housie';
-      html+='<div class="txt"><span class="lab">'+esc(who)+'</span>'+esc(turn.text||'')+'</div>';
+      const body=(turn.role==='trainee' && turn.original) ? diffHighlight(turn.original, turn.text||'') : esc(turn.text||'');
+      html+='<div class="txt"><span class="lab">'+esc(who)+(turn.original?' <span style="font-weight:600;text-transform:none;color:var(--muted)">(edited — highlighted)</span>':'')+'</span>'+body+'</div>';
     });
     html+='</div>';
     html+='</div>';
@@ -172,7 +206,9 @@ function traineesTab(){
   const pin=document.createElement('input'); pin.placeholder='4-digit PIN they will log in with';
   const cat=document.createElement('select');
   ['art-design','public-speaking','robotics','music','chess'].forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; cat.appendChild(o); });
-  const coh=document.createElement('input'); coh.placeholder='cohort (e.g. August 2026 batch)';
+  const cohLabel=document.createElement('div'); cohLabel.className='muted'; cohLabel.style.cssText='font-size:12px;font-weight:700;margin:2px 0 4px';
+  cohLabel.textContent='cohort start date';
+  const coh=document.createElement('input'); coh.type='date';
   const er=document.createElement('div'); er.className='err';
   const addBtn=document.createElement('button'); addBtn.className='btn'; addBtn.style.width='100%'; addBtn.textContent='add trainee';
   addBtn.onclick=async()=>{
@@ -187,7 +223,7 @@ function traineesTab(){
     }catch(e){ er.textContent=e.message; er.style.display='block'; }
     addBtn.disabled=false; addBtn.textContent='add trainee';
   };
-  formCard.append(nm,ph,pin,cat,coh,er,addBtn);
+  formCard.append(nm,ph,pin,cat,cohLabel,coh,er,addBtn);
   root.appendChild(formCard);
 
   const listCard=document.createElement('div'); listCard.className='card';
@@ -195,17 +231,60 @@ function traineesTab(){
   if(!TRAINEES.length){
     html+='<div class="empty">No trainees added yet.</div>';
   } else {
-    html+='<div class="table-wrap"><table class="sum-table"><thead><tr><th>Name</th><th>Phone</th><th>Category</th><th>Cohort</th><th>Progress</th></tr></thead><tbody>';
+    html+='<div class="table-wrap"><table class="sum-table"><thead><tr><th>Name</th><th>Phone</th><th>Category</th><th>Cohort</th><th>Progress</th><th>Assessment</th></tr></thead><tbody>';
     TRAINEES.forEach(t=>{
       const total=categoryGameCount(t.category);
       const done=new Set(ALL.filter(r=>r.trainee_phone===t.phone && r.category===t.category).map(r=>r.game_id)).size;
-      html+='<tr><td><b>'+esc(t.name)+'</b></td><td>'+esc(t.phone)+'</td><td>'+esc(t.category)+'</td><td>'+esc(t.cohort||'—')+'</td>'
-        +'<td>'+(total?done+' / '+total:'no games yet')+'</td></tr>';
+      html+='<tr><td><b>'+esc(t.name)+'</b></td><td>'+esc(t.phone)+'</td><td>'+esc(t.category)+'</td><td>'+fmtDate(t.cohort)+'</td>'
+        +'<td>'+(total?done+' / '+total:'no games yet')+'</td>'
+        +'<td><button class="ghost" data-approve-phone="'+esc(t.phone)+'" data-approve-next="'+(t.approved?'false':'true')+'" style="'+(t.approved?'background:var(--sage-tint);color:var(--sage);border-color:transparent':'')+'">'+(t.approved?'✓ approved':'approve download')+'</button></td></tr>';
     });
     html+='</tbody></table></div>';
   }
   listCard.innerHTML=html;
   root.appendChild(listCard);
+
+  listCard.querySelectorAll('[data-approve-phone]').forEach(btn=>{
+    btn.onclick=async()=>{
+      btn.disabled=true;
+      try{
+        await fetch(API+'/api/admin/trainees/approve',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},{'Authorization':'Bearer '+localStorage.getItem(TK)}),
+          body:JSON.stringify({phone:btn.getAttribute('data-approve-phone'), approved:btn.getAttribute('data-approve-next')==='true'})});
+        await loadTrainees(); render();
+      }catch(e){ btn.disabled=false; }
+    };
+  });
+}
+
+function accuracyTab(){
+  const card=document.createElement('div'); card.className='card';
+  let html='<div style="font-weight:800;font-size:16px;margin-bottom:10px">accuracy scores by trainee</div>'
+    +'<div class="muted" style="font-size:13px;margin-bottom:12px">gameplay accuracy and challenge (easier/harder) accuracy, per trainee, across every recorded attempt</div>';
+  const names=[...new Set(ALL.map(r=>r.trainee_name).filter(Boolean))].sort();
+  if(!names.length){
+    html+='<div class="empty">No data yet.</div>';
+  } else {
+    html+='<div class="table-wrap"><table class="sum-table"><thead><tr><th>Trainee</th><th>Category</th><th>checks</th>'
+      +'<th>gameplay accuracy</th><th>challenge accuracy</th><th>overall accuracy</th></tr></thead><tbody>';
+    names.forEach(name=>{
+      const recs=ALL.filter(r=>r.trainee_name===name);
+      const cat=recs[0].category||'—';
+      const pct=(key)=>{ const scored=recs.filter(r=>(r.scores||{})[key]!==undefined); return scored.length?Math.round(100*scored.filter(r=>r.scores[key]).length/scored.length):null; };
+      const gp=pct('gameplay_accuracy'), ch=pct('challenge_accuracy');
+      const overall=(gp!==null && ch!==null)?Math.round((gp+ch)/2):(gp!==null?gp:ch);
+      const fmt=v=>v===null?'—':v+'%';
+      html+='<tr><td><b>'+esc(name)+'</b></td><td>'+esc(cat)+'</td><td>'+recs.length+'</td>'
+        +'<td>'+ynBadge(gp)+'</td><td>'+ynBadge(ch)+'</td><td>'+ynBadge(overall)+'</td></tr>';
+    });
+    html+='</tbody></table></div>';
+  }
+  card.innerHTML=html;
+  root.appendChild(card);
+}
+function ynBadge(pct){
+  if(pct===null||pct===undefined) return '<span class="yn-pct">—</span>';
+  const cls=pct>=70?'yn-yes':pct>=40?'yn-no':'yn-no';
+  return '<span class="'+cls+'">'+pct+'%</span>';
 }
 
 function render(){
@@ -214,7 +293,7 @@ function render(){
   root.innerHTML='';
 
   const tabBar=document.createElement('div'); tabBar.className='tabs';
-  [{id:'responses',label:'Responses'},{id:'trainees',label:'Trainees'}].forEach(t=>{
+  [{id:'responses',label:'Responses'},{id:'trainees',label:'Trainees'},{id:'accuracy',label:'Accuracy'}].forEach(t=>{
     const b=document.createElement('button'); b.className='tab'+(ACTIVE_TAB===t.id?' active':''); b.textContent=t.label;
     b.onclick=()=>{ ACTIVE_TAB=t.id; render(); };
     tabBar.appendChild(b);
@@ -222,6 +301,7 @@ function render(){
   root.appendChild(tabBar);
 
   if(ACTIVE_TAB==='trainees'){ traineesTab(); return; }
+  if(ACTIVE_TAB==='accuracy'){ accuracyTab(); return; }
   if(!ALL.length){ root.innerHTML+='<div class="empty">No game explanations recorded yet.</div>'; return; }
   responsesTab();
 }

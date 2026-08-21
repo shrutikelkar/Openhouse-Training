@@ -36,10 +36,15 @@ import base64
 import hashlib
 import urllib.request
 import urllib.error
+import io
 from typing import Optional
 
 from fastapi import FastAPI, Request, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
+from docx import Document
+from docx.shared import Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 SECRET = os.environ.get("APP_SECRET", "change-me-before-deploy")
 STAFF_EMAIL = os.environ.get("STAFF_EMAIL", "staff@openhouse").strip().lower()
@@ -272,6 +277,23 @@ async def trainee_login(req: Request):
         "phone": phone,
         "category": trainee.get("category"),
         "cohort": trainee.get("cohort"),
+        "approved": bool(trainee.get("approved")),
+    }
+
+
+@app.get("/api/trainee/status")
+async def trainee_status(authorization: Optional[str] = Header(None)):
+    """Fresh approval/category/cohort status for the current trainee — used
+    to reflect an admin approving them without requiring a fresh login."""
+    role, sub = _check(authorization, {"trainee"})
+    trainee = _get_trainee(sub)
+    if not trainee:
+        raise HTTPException(404, "trainee record not found")
+    return {
+        "name": trainee.get("name"),
+        "category": trainee.get("category"),
+        "cohort": trainee.get("cohort"),
+        "approved": bool(trainee.get("approved")),
     }
 
 
@@ -293,10 +315,27 @@ async def add_trainee(req: Request, authorization: Optional[str] = Header(None))
     rec = {
         "phone": phone, "name": name, "pin": pin,
         "category": category, "cohort": cohort,
+        "approved": False,
         "added_at": time.strftime("%Y-%m-%d %H:%M"),
     }
     _redis("HSET", TRAINEES_KEY, phone, json.dumps(rec, ensure_ascii=False))
     return {"ok": True, "trainee": rec}
+
+
+@app.post("/api/admin/trainees/approve")
+async def approve_trainee(req: Request, authorization: Optional[str] = Header(None)):
+    """Marks a trainee's assessment as approved, unlocking their download.
+    Toggleable — pass approved:false to revoke."""
+    _check(authorization, {"staff"})
+    b = await req.json()
+    phone = (b.get("phone") or "").strip()
+    approved = bool(b.get("approved", True))
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+    trainee["approved"] = approved
+    _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
+    return {"ok": True, "trainee": trainee}
 
 
 @app.get("/api/admin/trainees")
@@ -393,11 +432,16 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
         "capture it in a \"new_idea\" field (a short, cleaned-up sentence describing the idea). If there "
         "was no new idea (they just repeated or paraphrased the documented answer, or gave nothing "
         "usable), set \"new_idea\" to null. Only include \"new_idea\" in the final action, not in ask.\n\n"
+        "Also when finalizing, include a \"suggestion\" field: one short, concrete, actionable sentence. "
+        "If any criterion scored 0, target the single most important miss with a specific fix (e.g. "
+        "'Next time, speak directly to the children — try starting with \"you pick a bead...\" instead "
+        "of describing what they do'). If all five criteria scored 1, make it a brief, genuine "
+        "encouragement, not a fix (e.g. 'Great work — this was clear, accurate, and in your own words').\n\n"
         "Respond with ONLY one JSON object, no other text, no markdown fences, in one of "
         "these two shapes:\n"
         '{"action":"ask","question":"..."}\n'
         'or\n'
-        '{"action":"final","scores":{"age_appropriateness":0,"clarity":0,"gameplay_accuracy":0,"challenge_accuracy":0,"genuine":0},"reasoning":"...","new_idea":null}'
+        '{"action":"final","scores":{"age_appropriateness":0,"clarity":0,"gameplay_accuracy":0,"challenge_accuracy":0,"genuine":0},"reasoning":"...","new_idea":null,"suggestion":"..."}'
     )
     transcript = "\n".join(f"{h.get('role')}: {h.get('text','')}" for h in history)
     result = _gemini_json(system, transcript or "(no explanation given yet)")
@@ -446,6 +490,7 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
     if result.get("action") == "final":
         result.setdefault("scores", {}).setdefault("genuine", 0)
         result.setdefault("new_idea", None)
+        result.setdefault("suggestion", "")
     return result
 
 
@@ -476,6 +521,7 @@ async def explain_save(req: Request, authorization: Optional[str] = Header(None)
         "scores": b.get("scores") or {},
         "reasoning": b.get("reasoning") or "",
         "new_idea": b.get("new_idea") or None,
+        "suggestion": b.get("suggestion") or "",
     }
     _redis("LPUSH", EXPLAIN_LIST_KEY, json.dumps(rec, ensure_ascii=False))
     return {"ok": True, "id": rec["id"]}
@@ -496,3 +542,114 @@ async def my_explanations(authorization: Optional[str] = Header(None)):
     rows = res.get("result") or []
     all_recs = [json.loads(x) for x in rows]
     return [r for r in all_recs if r.get("trainee_phone") == sub]
+
+
+CRITERIA_LABELS = [
+    ("age_appropriateness", "Age fit"),
+    ("clarity", "Clarity"),
+    ("gameplay_accuracy", "Gameplay accuracy"),
+    ("challenge_accuracy", "Challenge accuracy"),
+    ("genuine", "Genuine (own words, not read)"),
+]
+
+BRAND_CORAL = RGBColor(0xCE, 0x45, 0x20)
+BRAND_TEAL = RGBColor(0x0E, 0x8F, 0xA3)
+BRAND_INK = RGBColor(0x2C, 0x2B, 0x28)
+BRAND_MUTED = RGBColor(0x6B, 0x67, 0x5F)
+
+
+@app.get("/api/my-assessment.docx")
+async def my_assessment_docx(authorization: Optional[str] = Header(None)):
+    role, sub = _check(authorization, {"trainee"})
+    trainee = _get_trainee(sub)
+    if not trainee:
+        raise HTTPException(404, "trainee record not found")
+    if not trainee.get("approved"):
+        raise HTTPException(403, "your assessment hasn't been approved for download yet — check with your admin")
+
+    res = _redis("LRANGE", EXPLAIN_LIST_KEY, "0", "999")
+    rows = res.get("result") or []
+    all_recs = [json.loads(x) for x in rows]
+    mine = [r for r in all_recs if r.get("trainee_phone") == sub]
+    latest = {}
+    for r in mine:
+        if r.get("game_id") not in latest:
+            latest[r["game_id"]] = r
+    done = list(latest.values())
+    done.sort(key=lambda r: r.get("received_at", ""))
+
+    def score_total(scores):
+        return sum(1 for k, _ in CRITERIA_LABELS if scores.get(k))
+
+    grand = sum(score_total(r.get("scores") or {}) for r in done)
+
+    doc = Document()
+    title = doc.add_heading("Game Explanation Assessment", level=0)
+    title.runs[0].font.color.rgb = BRAND_CORAL
+
+    sub_p = doc.add_paragraph()
+    sub_run = sub_p.add_run(f"{trainee.get('name')} — {trainee.get('category')}" + (f" — {trainee.get('cohort')}" if trainee.get("cohort") else ""))
+    sub_run.bold = True
+    sub_run.font.size = Pt(13)
+    doc.add_paragraph(time.strftime("%d %B %Y"), style=None)
+
+    overall = doc.add_paragraph()
+    overall_run = overall.add_run(f"Overall: {grand} / {len(done) * 5}  ({len(done)} games completed)")
+    overall_run.bold = True
+    overall_run.font.size = Pt(12)
+    overall_run.font.color.rgb = BRAND_TEAL
+
+    # cross-game pattern summary
+    misses = {}
+    for r in done:
+        scores = r.get("scores") or {}
+        for k, label in CRITERIA_LABELS:
+            if not scores.get(k):
+                misses[label] = misses.get(label, 0) + 1
+    doc.add_heading("Areas to work on", level=1).runs[0].font.color.rgb = BRAND_TEAL
+    if misses:
+        for label, count in sorted(misses.items(), key=lambda x: -x[1]):
+            p = doc.add_paragraph(style="List Bullet")
+            p.add_run(f"{label} — missed in {count} of {len(done)} games")
+    else:
+        doc.add_paragraph("No repeated weak spots — strong across the board.")
+
+    doc.add_heading("Game by game", level=1).runs[0].font.color.rgb = BRAND_TEAL
+    for r in done:
+        scores = r.get("scores") or {}
+        total = score_total(scores)
+        h = doc.add_heading(f"{r.get('game_name')} (ages {r.get('age_band')}) — {total}/5", level=2)
+        h.runs[0].font.color.rgb = BRAND_INK
+        for k, label in CRITERIA_LABELS:
+            p = doc.add_paragraph(style="List Bullet")
+            mark = "✓" if scores.get(k) else "✗"
+            run = p.add_run(f"{mark} {label}")
+            run.font.color.rgb = BRAND_TEAL if scores.get(k) else RGBColor(0xC0, 0x49, 0x2F)
+        if r.get("reasoning"):
+            p = doc.add_paragraph()
+            p.add_run("Notes: ").bold = True
+            p.add_run(r["reasoning"])
+        if r.get("suggestion"):
+            p = doc.add_paragraph()
+            p.add_run("Suggestion: ").bold = True
+            run = p.add_run(r["suggestion"])
+            run.italic = True
+        if r.get("new_idea"):
+            p = doc.add_paragraph()
+            p.add_run("💡 Idea suggested: ").bold = True
+            p.add_run(r["new_idea"])
+
+    closing = doc.add_paragraph()
+    closing_run = closing.add_run("— Housie")
+    closing_run.italic = True
+    closing_run.font.color.rgb = BRAND_MUTED
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    filename = re.sub(r"[^a-z0-9]+", "-", trainee.get("name", "assessment").lower()) + "-assessment.docx"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

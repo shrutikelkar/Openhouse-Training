@@ -19,10 +19,10 @@ const API=(window.location.protocol==='file:'||window.location.hostname==='local
 
 function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
 
-let TRAINEE={ name:'', phone:'', category:'', cohort:'' };
+let TRAINEE={ name:'', phone:'', category:'', cohort:'', approved:false };
 let MY_RECORDS=[];
 let STATE={ game:null, ageBand:null, history:[], finalResult:null };
-let recognition=null, listening=false, liveText='', reviewMode=false;
+let recognition=null, listening=false, liveText='', reviewMode=false, originalTranscript='';
 
 function authHeader(){ return {'Authorization':'Bearer '+localStorage.getItem(TK)}; }
 
@@ -89,10 +89,18 @@ async function fetchMyRecords(){
   return true;
 }
 
+async function fetchMyStatus(){
+  try{
+    const r=await fetch(API+'/api/trainee/status',{headers:authHeader()});
+    if(r.ok){ const d=await r.json(); TRAINEE.approved=!!d.approved; TRAINEE.category=d.category; TRAINEE.cohort=d.cohort; }
+  }catch(e){}
+}
+
 async function renderChecklist(){
   root.innerHTML='<div class="empty">loading…</div>';
   const ok=await fetchMyRecords();
   if(!ok) return;
+  await fetchMyStatus();
   const games=categoryGames();
   const latest=latestByGame();
   const doneCount=games.filter(g=>latest[g.id]).length;
@@ -126,10 +134,15 @@ async function renderChecklist(){
     root.appendChild(item);
   });
 
-  const actions=document.createElement('div'); actions.style.cssText='display:flex;gap:8px;margin-top:14px';
-  if(doneCount>0){
+  if(doneCount>0 && !TRAINEE.approved){
+    const note=document.createElement('div'); note.className='muted'; note.style.cssText='font-size:12.5px;margin-bottom:10px';
+    note.textContent='Your assessment will be available to download once your admin approves it.';
+    root.appendChild(note);
+  }
+  const actions=document.createElement('div'); actions.style.cssText='display:flex;gap:8px;margin-top:4px';
+  if(doneCount>0 && TRAINEE.approved){
     const dlBtn=document.createElement('button'); dlBtn.className='ghost'; dlBtn.style.flex='1'; dlBtn.textContent='⬇ download my assessment';
-    dlBtn.onclick=()=>downloadAssessment(games, latest);
+    dlBtn.onclick=()=>downloadAssessmentDocx(dlBtn);
     actions.appendChild(dlBtn);
   }
   const signout=document.createElement('button'); signout.className='ghost'; signout.style.flex='none'; signout.textContent='sign out';
@@ -153,6 +166,7 @@ function renderIntro(){
   const card=document.createElement('div'); card.className='card center';
   card.innerHTML='<span class="pill coral">'+esc(STATE.game.name)+'</span><span class="pill teal">ages '+esc(STATE.ageBand)+'</span>'
     +'<p style="margin-top:14px">Explain <b>'+esc(STATE.game.name)+'</b> out loud, as if you\'re briefing a group of children aged <b>'+esc(STATE.ageBand)+'</b>. Cover the goal, how to play, and how you\'d end it.</p>'
+    +'<p style="font-weight:700;font-size:13.5px;color:var(--coral-dark)">Explain as you would to a child. Be clear and specific. Do not use any jargon.</p>'
     +'<p class="muted" style="font-size:13px">Tap the mic, speak your explanation, then tap "submit answer" when you\'re done. There\'ll be a couple of follow-up questions after.</p>';
   const btn=document.createElement('button'); btn.className='btn'; btn.textContent='I\'m ready →';
   btn.onclick=()=>{ renderConversation(); };
@@ -196,9 +210,9 @@ function renderConversation(waitingForModel){
     card.appendChild(ta);
     const row=document.createElement('div'); row.style.cssText='display:flex;gap:8px';
     const rerecord=document.createElement('button'); rerecord.className='ghost'; rerecord.textContent='🎙 re-record instead';
-    rerecord.onclick=()=>{ reviewMode=false; liveText=''; renderConversation(); };
+    rerecord.onclick=()=>{ reviewMode=false; liveText=''; originalTranscript=''; renderConversation(); };
     const submitBtn=document.createElement('button'); submitBtn.className='btn'; submitBtn.style.flex='1'; submitBtn.textContent='submit answer';
-    submitBtn.onclick=()=>submitAnswer(ta.value);
+    submitBtn.onclick=()=>submitAnswer(ta.value, originalTranscript);
     row.append(rerecord,submitBtn);
     card.appendChild(row);
     root.appendChild(card);
@@ -239,7 +253,7 @@ function toggleListening(){
   recognition.onerror=()=>{ stopListening(); };
   recognition.onend=()=>{
     listening=false;
-    if(liveText.trim()){ reviewMode=true; renderConversation(); }
+    if(liveText.trim()){ originalTranscript=liveText.trim(); reviewMode=true; renderConversation(); }
     else { const m=document.getElementById('micBtn'); if(m) m.classList.remove('listening'); }
   };
   recognition.start();
@@ -251,11 +265,13 @@ function stopListening(){
   listening=false;
 }
 
-async function submitAnswer(rawText){
+async function submitAnswer(rawText, original){
   const text=(rawText||'').trim();
   if(!text) return;
   reviewMode=false;
-  STATE.history.push({role:'trainee', text});
+  const turn={role:'trainee', text};
+  if(original && original.trim() && original.trim()!==text) turn.original=original.trim();
+  STATE.history.push(turn);
   renderConversation(true);
   try{
     const r=await fetch(API+'/api/explain/turn',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},authHeader()),
@@ -296,6 +312,7 @@ function renderFinal(){
       +'<span class="sc '+(s.genuine?'yes':'no')+'">'+(s.genuine?'✓':'✗')+' genuine</span>'
     +'</div>'
     +(STATE.finalResult.reasoning?'<div class="muted" style="font-size:13.5px;margin-bottom:12px">'+esc(STATE.finalResult.reasoning)+'</div>':'')
+    +(STATE.finalResult.suggestion?'<div class="feedback-box" style="margin-bottom:12px"><div class="ft">🎯 from Housie</div><div style="font-size:13.5px">'+esc(STATE.finalResult.suggestion)+'</div></div>':'')
     +(STATE.finalResult.new_idea?'<div class="feedback-box" style="margin-bottom:12px"><div class="ft">💡 new idea from '+esc(TRAINEE.name||'you')+'</div><div style="font-size:13.5px">'+esc(STATE.finalResult.new_idea)+'</div></div>':'');
   const saveBtn=document.createElement('button'); saveBtn.className='btn'; saveBtn.style.width='100%'; saveBtn.textContent='save & back to checklist';
   saveBtn.onclick=async()=>{
@@ -303,7 +320,7 @@ function renderFinal(){
     try{
       await fetch(API+'/api/explain/save',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},authHeader()),body:JSON.stringify({
         game_id:STATE.game.id, game_name:STATE.game.name, age_band:STATE.ageBand, trainee_name:TRAINEE.name,
-        history:STATE.history, scores:s, reasoning:STATE.finalResult.reasoning||'', new_idea:STATE.finalResult.new_idea||null
+        history:STATE.history, scores:s, reasoning:STATE.finalResult.reasoning||'', new_idea:STATE.finalResult.new_idea||null, suggestion:STATE.finalResult.suggestion||''
       })});
       renderChecklist();
     }catch(e){ saveBtn.textContent='could not save — try again'; saveBtn.disabled=false; }
@@ -312,35 +329,26 @@ function renderFinal(){
   root.appendChild(card);
 }
 
-function downloadAssessment(games, latest){
-  const CRITERIA=['age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine'];
-  const LABELS={age_appropriateness:'age fit',clarity:'clarity',gameplay_accuracy:'gameplay accuracy',challenge_accuracy:'challenge accuracy',genuine:'genuine (own words, not read)'};
-  const date=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
-  const done=games.filter(g=>latest[g.id]);
-  const grand=done.reduce((n,g)=>n+scoreTotal(latest[g.id].scores),0);
-  let lines=[];
-  lines.push('GAME EXPLANATION ASSESSMENT');
-  lines.push(TRAINEE.name+' — '+TRAINEE.category+(TRAINEE.cohort?' — '+TRAINEE.cohort:''));
-  lines.push(date);
-  lines.push('');
-  lines.push('Completed: '+done.length+' of '+games.length+' games — '+grand+' / '+(done.length*5));
-  lines.push('');
-  done.forEach(g=>{
-    const r=latest[g.id];
-    lines.push('— '+g.name+' (ages '+r.age_band+') — '+scoreTotal(r.scores)+'/5');
-    CRITERIA.forEach(k=>{ lines.push('   ['+(r.scores[k]?'x':' ')+'] '+LABELS[k]); });
-    if(r.reasoning) lines.push('   notes: '+r.reasoning);
-    if(r.new_idea) lines.push('   idea suggested: '+r.new_idea);
-    lines.push('');
-  });
-  lines.push('— Housie');
-  const blob=new Blob([lines.join('\n')], {type:'text/plain'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;
-  a.download=TRAINEE.name.replace(/[^a-z0-9]+/gi,'-')+'-assessment-'+new Date().toISOString().slice(0,10)+'.txt';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+async function downloadAssessmentDocx(btn){
+  const orig=btn.textContent;
+  btn.disabled=true; btn.textContent='preparing…';
+  try{
+    const r=await fetch(API+'/api/my-assessment.docx',{headers:authHeader()});
+    if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not generate the document'); }
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    const cd=r.headers.get('Content-Disposition')||'';
+    const m=cd.match(/filename="([^"]+)"/);
+    a.download=m?m[1]:(TRAINEE.name.replace(/[^a-z0-9]+/gi,'-')+'-assessment.docx');
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    btn.textContent=orig;
+  }catch(e){
+    btn.textContent='could not download — try again';
+  }
+  btn.disabled=false;
 }
 
 const savedInfo=localStorage.getItem('oh_trainee_info');
