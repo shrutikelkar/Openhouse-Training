@@ -88,14 +88,14 @@ function loginView(msg){
   c.append(em,pw,er,b); root.appendChild(c);
 }
 
-function scoreTotal(r){ const s=r.scores||{}; return ['age_appropriateness','clarity','accuracy','genuine'].reduce((n,k)=>n+(s[k]?1:0),0); }
+function scoreTotal(r){ const s=r.scores||{}; return ['age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine'].reduce((n,k)=>n+(s[k]?1:0),0); }
 
 function summaryStats(list){
   const n=list.length;
   if(!n) return {n:0};
   const avg=(list.reduce((sum,r)=>sum+scoreTotal(r),0)/n);
   const pct=(key)=>Math.round(100*list.filter(r=>(r.scores||{})[key]).length/n);
-  return { n, avg:avg.toFixed(1), age:pct('age_appropriateness'), clarity:pct('clarity'), accuracy:pct('accuracy'), genuine:pct('genuine') };
+  return { n, avg:avg.toFixed(1), age:pct('age_appropriateness'), clarity:pct('clarity'), gameplay:pct('gameplay_accuracy'), challenge:pct('challenge_accuracy'), genuine:pct('genuine') };
 }
 
 function byGameTable(list){
@@ -107,7 +107,7 @@ function byGameTable(list){
   keys.forEach(k=>{
     const obs=groups[k];
     const avg=(obs.reduce((s,r)=>s+scoreTotal(r),0)/obs.length).toFixed(1);
-    html+='<tr><td><b>'+esc(k)+'</b></td><td>'+obs.length+'</td><td>'+avg+' / 4</td></tr>';
+    html+='<tr><td><b>'+esc(k)+'</b></td><td>'+obs.length+'</td><td>'+avg+' / 5</td></tr>';
   });
   html+='</tbody></table></div>';
   return html;
@@ -116,7 +116,7 @@ function byGameTable(list){
 function recordsView(list){
   if(!list.length) return '<div class="empty">No game explanations match this filter.</div>';
   const sorted=[...list].sort((a,b)=>(b.received_at||'').localeCompare(a.received_at||''));
-  const scoreLabels={age_appropriateness:'age fit',clarity:'clarity',accuracy:'accuracy',genuine:'genuine'};
+  const scoreLabels={age_appropriateness:'age fit',clarity:'clarity',gameplay_accuracy:'gameplay accuracy',challenge_accuracy:'challenge accuracy',genuine:'genuine'};
   return sorted.map((r,idx)=>{
     const s=r.scores||{};
     const total=scoreTotal(r);
@@ -129,18 +129,18 @@ function recordsView(list){
     html+='<span class="muted" style="font-size:12px;margin-left:auto">'+esc(r.received_at||'')+'</span>';
     html+='</div>';
     html+='<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">';
-    ['age_appropriateness','clarity','accuracy','genuine'].forEach(k=>{
+    ['age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine'].forEach(k=>{
       const ok=!!s[k];
       html+='<span class="'+(ok?'yn-yes':'yn-no')+'" style="font-size:11px">'+(ok?'✓':'✗')+' '+scoreLabels[k]+'</span>';
     });
-    html+='<span class="pill" style="margin-left:4px">'+total+'/4</span>';
+    html+='<span class="pill" style="margin-left:4px">'+total+'/5</span>';
     html+='</div>';
     if(r.reasoning) html+='<div class="txt"><span class="lab">scoring notes</span>'+esc(r.reasoning)+'</div>';
     html+='<button class="ghost" style="margin-top:4px" onclick="const t=document.getElementById(\''+uid+'\');t.style.display=t.style.display===\'none\'?\'block\':\'none\'">view transcript</button>';
     html+='<div id="'+uid+'" style="display:none;margin-top:10px">';
     (r.history||[]).forEach(turn=>{
-      const who=turn.role==='trainee'?'trainee':'ai';
-      html+='<div class="txt"><span class="lab">'+who+'</span>'+esc(turn.text||'')+'</div>';
+      const who=turn.role==='trainee'?(r.trainee_name||'trainee'):'Housie';
+      html+='<div class="txt"><span class="lab">'+esc(who)+'</span>'+esc(turn.text||'')+'</div>';
     });
     html+='</div>';
     html+='</div>';
@@ -173,10 +173,11 @@ function render(list){
   if(stats.n){
     html+='<div class="stat-row">'
       +'<div class="stat"><div class="n">'+stats.n+'</div><div class="l">checks</div></div>'
-      +'<div class="stat"><div class="n">'+stats.avg+' / 4</div><div class="l">avg score</div></div>'
+      +'<div class="stat"><div class="n">'+stats.avg+' / 5</div><div class="l">avg score</div></div>'
       +'<div class="stat"><div class="n">'+stats.age+'%</div><div class="l">age fit</div></div>'
       +'<div class="stat"><div class="n">'+stats.clarity+'%</div><div class="l">clarity</div></div>'
-      +'<div class="stat"><div class="n">'+stats.accuracy+'%</div><div class="l">accuracy</div></div>'
+      +'<div class="stat"><div class="n">'+stats.gameplay+'%</div><div class="l">gameplay accuracy</div></div>'
+      +'<div class="stat"><div class="n">'+stats.challenge+'%</div><div class="l">challenge accuracy</div></div>'
       +'<div class="stat"><div class="n">'+stats.genuine+'%</div><div class="l">genuine</div></div>'
       +'</div>';
   }

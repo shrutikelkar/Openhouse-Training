@@ -160,7 +160,7 @@ function renderConversation(waitingForModel){
   const log=document.createElement('div');
   STATE.history.forEach(h=>{
     const d=document.createElement('div'); d.className='turn '+(h.role==='trainee'?'trainee':'ai');
-    d.innerHTML='<span class="lab">'+(h.role==='trainee'?'trainee':'ai')+'</span>'+esc(h.text);
+    d.innerHTML='<span class="lab">'+(h.role==='trainee'?esc(STATE.traineeName||'you'):'Housie')+'</span>'+esc(h.text);
     if(h.role==='ai'){
       const replay=document.createElement('button'); replay.className='ghost'; replay.style.cssText='margin-top:6px;font-size:11px;padding:4px 10px';
       replay.textContent='🔊 replay'; replay.onclick=()=>speak(h.text);
@@ -274,17 +274,19 @@ async function submitAnswer(rawText){
 function renderFinal(){
   root.innerHTML='';
   const s=(STATE.finalResult||{}).scores||{};
-  const total=['age_appropriateness','clarity','accuracy','genuine'].reduce((n,k)=>n+(s[k]?1:0),0);
+  const total=['age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine'].reduce((n,k)=>n+(s[k]?1:0),0);
   const card=document.createElement('div'); card.className='card';
   card.innerHTML='<div style="font-weight:800;font-size:17px;margin-bottom:6px">result — '+esc(STATE.game.name)+'</div>'
-    +'<div class="badge-total">'+total+' / 4</div>'
+    +'<div class="badge-total">'+total+' / 5</div>'
     +'<div class="scorebar">'
       +'<span class="sc '+(s.age_appropriateness?'yes':'no')+'">'+(s.age_appropriateness?'✓':'✗')+' age fit (ages '+esc(STATE.ageBand)+')</span>'
       +'<span class="sc '+(s.clarity?'yes':'no')+'">'+(s.clarity?'✓':'✗')+' clarity</span>'
-      +'<span class="sc '+(s.accuracy?'yes':'no')+'">'+(s.accuracy?'✓':'✗')+' accuracy</span>'
+      +'<span class="sc '+(s.gameplay_accuracy?'yes':'no')+'">'+(s.gameplay_accuracy?'✓':'✗')+' gameplay accuracy</span>'
+      +'<span class="sc '+(s.challenge_accuracy?'yes':'no')+'">'+(s.challenge_accuracy?'✓':'✗')+' challenge accuracy</span>'
       +'<span class="sc '+(s.genuine?'yes':'no')+'">'+(s.genuine?'✓':'✗')+' genuine</span>'
     +'</div>'
-    +(STATE.finalResult.reasoning?'<div class="muted" style="font-size:13.5px;margin-bottom:12px">'+esc(STATE.finalResult.reasoning)+'</div>':'');
+    +(STATE.finalResult.reasoning?'<div class="muted" style="font-size:13.5px;margin-bottom:12px">'+esc(STATE.finalResult.reasoning)+'</div>':'')
+    +(STATE.finalResult.new_idea?'<div class="feedback-box" style="margin-bottom:12px"><div class="ft">💡 new idea from '+esc(STATE.traineeName||'you')+'</div><div style="font-size:13.5px">'+esc(STATE.finalResult.new_idea)+'</div></div>':'');
   const isLast=STATE.index>=STATE.queue.length-1;
   const saveBtn=document.createElement('button'); saveBtn.className='btn'; saveBtn.style.width='100%';
   saveBtn.textContent=isLast?'save & finish all checks':'save & continue → game '+(STATE.index+2)+' of '+STATE.queue.length;
@@ -293,9 +295,9 @@ function renderFinal(){
     try{
       await fetch(API+'/api/explain/save',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},authHeader()),body:JSON.stringify({
         game_id:STATE.game.id, game_name:STATE.game.name, age_band:STATE.ageBand, trainee_name:STATE.traineeName,
-        history:STATE.history, scores:s, reasoning:STATE.finalResult.reasoning||''
+        history:STATE.history, scores:s, reasoning:STATE.finalResult.reasoning||'', new_idea:STATE.finalResult.new_idea||null
       })});
-      STATE.results.push({game_name:STATE.game.name, age_band:STATE.ageBand, scores:s, reasoning:STATE.finalResult.reasoning||''});
+      STATE.results.push({game_name:STATE.game.name, age_band:STATE.ageBand, scores:s, reasoning:STATE.finalResult.reasoning||'', new_idea:STATE.finalResult.new_idea||null});
       if(isLast){ renderSummary(); }
       else { STATE.index+=1; startCurrentGame(); }
     }catch(e){ saveBtn.textContent='could not save — try again'; saveBtn.disabled=false; }
@@ -307,11 +309,11 @@ function renderFinal(){
 function renderSummary(){
   root.innerHTML='';
   const card=document.createElement('div'); card.className='card';
-  const CRITERIA=['age_appropriateness','clarity','accuracy','genuine'];
-  const LABELS={age_appropriateness:'age fit',clarity:'clarity',accuracy:'accuracy',genuine:'genuine (own words, not read)'};
+  const CRITERIA=['age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine'];
+  const LABELS={age_appropriateness:'age fit',clarity:'clarity',gameplay_accuracy:'gameplay accuracy',challenge_accuracy:'challenge accuracy',genuine:'genuine (own words, not read)'};
   const grand=STATE.results.reduce((n,r)=>n+CRITERIA.reduce((m,k)=>m+(r.scores[k]?1:0),0),0);
   card.innerHTML='<div style="font-weight:800;font-size:18px;margin-bottom:2px">all checks complete — '+esc(STATE.traineeName)+'</div>'
-    +'<div class="muted" style="font-size:13px;margin-bottom:14px">'+STATE.results.length+' games · '+grand+' / '+(STATE.results.length*4)+' total</div>';
+    +'<div class="muted" style="font-size:13px;margin-bottom:14px">'+STATE.results.length+' games · '+grand+' / '+(STATE.results.length*5)+' total</div>';
 
   // consolidated feedback — which criteria came up short, and how often
   const misses={};
@@ -330,17 +332,52 @@ function renderSummary(){
   STATE.results.forEach(r=>{
     const total=CRITERIA.reduce((n,k)=>n+(r.scores[k]?1:0),0);
     const row=document.createElement('div'); row.style.cssText='padding:8px 0;border-bottom:1px dashed #efe9dd;font-size:14px';
-    let inner='<div style="display:flex;align-items:center;gap:8px"><span style="flex:1"><b>'+esc(r.game_name)+'</b> <span class="muted">(ages '+esc(r.age_band)+')</span></span><span class="pill">'+total+'/4</span></div>';
-    if(total<4 && r.reasoning){
+    let inner='<div style="display:flex;align-items:center;gap:8px"><span style="flex:1"><b>'+esc(r.game_name)+'</b> <span class="muted">(ages '+esc(r.age_band)+')</span></span><span class="pill">'+total+'/5</span></div>';
+    if(total<5 && r.reasoning){
       inner+='<div class="muted" style="font-size:12.5px;margin-top:3px">'+esc(r.reasoning)+'</div>';
+    }
+    if(r.new_idea){
+      inner+='<div style="font-size:12.5px;margin-top:3px;color:var(--mintd)">💡 '+esc(r.new_idea)+'</div>';
     }
     row.innerHTML=inner;
     card.appendChild(row);
   });
-  const doneBtn=document.createElement('button'); doneBtn.className='btn'; doneBtn.style.cssText='width:100%;margin-top:16px'; doneBtn.textContent='start next trainee';
+  const dlBtn=document.createElement('button'); dlBtn.className='ghost'; dlBtn.style.cssText='width:100%;margin-top:14px'; dlBtn.textContent='⬇ download my assessment';
+  dlBtn.onclick=()=>downloadAssessment(grand);
+  card.appendChild(dlBtn);
+  const doneBtn=document.createElement('button'); doneBtn.className='btn'; doneBtn.style.cssText='width:100%;margin-top:10px'; doneBtn.textContent='start next trainee';
   doneBtn.onclick=renderSetup;
   card.appendChild(doneBtn);
   root.appendChild(card);
+}
+
+function downloadAssessment(grandTotal){
+  const CRITERIA=['age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine'];
+  const LABELS={age_appropriateness:'age fit',clarity:'clarity',gameplay_accuracy:'gameplay accuracy',challenge_accuracy:'challenge accuracy',genuine:'genuine (own words, not read)'};
+  const date=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
+  let lines=[];
+  lines.push('GAME EXPLANATION ASSESSMENT');
+  lines.push(STATE.traineeName);
+  lines.push(date);
+  lines.push('');
+  lines.push('Overall: '+grandTotal+' / '+(STATE.results.length*5));
+  lines.push('');
+  STATE.results.forEach(r=>{
+    const total=CRITERIA.reduce((n,k)=>n+(r.scores[k]?1:0),0);
+    lines.push('— '+r.game_name+' (ages '+r.age_band+') — '+total+'/5');
+    CRITERIA.forEach(k=>{ lines.push('   ['+(r.scores[k]?'x':' ')+'] '+LABELS[k]); });
+    if(r.reasoning) lines.push('   notes: '+r.reasoning);
+    if(r.new_idea) lines.push('   idea suggested: '+r.new_idea);
+    lines.push('');
+  });
+  lines.push('— Housie');
+  const blob=new Blob([lines.join('\n')], {type:'text/plain'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=STATE.traineeName.replace(/[^a-z0-9]+/gi,'-')+'-assessment-'+new Date().toISOString().slice(0,10)+'.txt';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 if(!localStorage.getItem(TK)) loginView(); else renderSetup();

@@ -3,8 +3,8 @@
 Fully independent from the Openhouse Quality Observations app: separate
 login, separate data store, separate deploy. Trainees explain art & design
 games out loud; Gemini asks follow-up questions and scores the explanation
-on age fit, clarity, accuracy, and whether it was genuine or read verbatim
-from the reference material.
+on age fit, clarity, gameplay accuracy, challenge-adjustment accuracy, and
+whether it was genuine or read verbatim from the reference material.
 
 Accounts (env vars set in the Vercel dashboard — defaults below are
 placeholders, replace them before relying on this for anything real):
@@ -223,6 +223,18 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
     trainee_turns = sum(1 for h in history if h.get("role") == "trainee")
     prior_questions = [h.get("text", "") for h in history if h.get("role") == "ai"]
 
+    if age_band in ("5–8", "5-8"):
+        age_example_rule = (
+            "Since the age band here is 5-8, they must ALSO give at least one concrete worked "
+            "example (e.g. \"like if you pick a red bead, you put it on the red square\") — for "
+            "young children, listing abstract rules without a concrete example is NOT enough, score 0."
+        )
+    else:
+        age_example_rule = (
+            "For this 8-12 band, a concrete example is a plus but not mandatory, as long as the "
+            "direct-address register is right."
+        )
+
     system = (
         "You are quizzing a childcare educator-in-training on an art & design game "
         "they must run with children. You have the game's authoritative reference "
@@ -253,18 +265,34 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
         "— finalize instead of asking anything further, even before the max turn.\n"
         "- Target the biggest gap or error first (missing step, wrong material, wrong group "
         "size/goal, or a wrong/missing easier-harder answer).\n"
-        "- When finalizing, score four criteria as 1 (met) or 0 (not met): "
-        "age_appropriateness (did they pitch materials/instructions/pace to the stated age "
-        "band appropriately), clarity (was the explanation easy to follow, in a sensible "
-        "order), accuracy (did it match the reference rules, goal, materials, and at least "
-        "one correct easier/harder answer), and genuine (1 if this reads as their own "
-        "understanding in their own words, 0 if it reads as reading directly from the "
-        "reference script — use the genuineness signal above as evidence).\n\n"
+        "- When finalizing, score five criteria as 1 (met) or 0 (not met):\n"
+        "  1. age_appropriateness — this is NOT just about materials/pacing. The trainee must have "
+        "actually pitched the explanation AS IF speaking directly to the children themselves (simple, "
+        "direct, concrete language — 'you pick a bead and...') — not described the game mechanically "
+        "to an adult colleague or trainer ('the children pick a bead and...' read like a briefing is "
+        "a fail even if every fact is correct). "
+        + age_example_rule + "\n"
+        "  2. clarity — was the explanation easy to follow, steps in a sensible order.\n"
+        "  3. gameplay_accuracy — did the core mechanics match the reference: goal, steps, and materials.\n"
+        "  4. challenge_accuracy — did they give a correct easier/harder difficulty-adjustment answer "
+        "(scored separately from gameplay_accuracy — a trainee can get the game right but the "
+        "difficulty adjustment wrong, or vice versa). This counts as correct (1) if it matches the "
+        "reference 'easier'/'harder'/'difficulty_levels' fields, OR if they propose a different but "
+        "genuinely sound, sensible, age-appropriate way to adjust difficulty — do not penalize a good "
+        "idea just because it isn't the documented one.\n"
+        "  5. genuine — 1 if this reads as their own understanding in their own words, 0 if it reads "
+        "as reading directly from the reference script (use the genuineness signal above as evidence).\n\n"
+        "Additionally, when finalizing: if the trainee's easier/harder answer included a genuinely NEW "
+        "idea for adjusting difficulty — one that is NOT already described in the reference 'easier'/"
+        "'harder'/'difficulty_levels'/'variations' fields, and is a sensible, usable suggestion — "
+        "capture it in a \"new_idea\" field (a short, cleaned-up sentence describing the idea). If there "
+        "was no new idea (they just repeated or paraphrased the documented answer, or gave nothing "
+        "usable), set \"new_idea\" to null. Only include \"new_idea\" in the final action, not in ask.\n\n"
         "Respond with ONLY one JSON object, no other text, no markdown fences, in one of "
         "these two shapes:\n"
         '{"action":"ask","question":"..."}\n'
         'or\n'
-        '{"action":"final","scores":{"age_appropriateness":0,"clarity":0,"accuracy":0,"genuine":0},"reasoning":"..."}'
+        '{"action":"final","scores":{"age_appropriateness":0,"clarity":0,"gameplay_accuracy":0,"challenge_accuracy":0,"genuine":0},"reasoning":"...","new_idea":null}'
     )
     transcript = "\n".join(f"{h.get('role')}: {h.get('text','')}" for h in history)
     result = _gemini_json(system, transcript or "(no explanation given yet)")
@@ -285,7 +313,7 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
             if result.get("action") != "final":
                 result = {
                     "action": "final",
-                    "scores": {"age_appropriateness": 1, "clarity": 1, "accuracy": 1, "genuine": 1},
+                    "scores": {"age_appropriateness": 1, "clarity": 1, "gameplay_accuracy": 1, "challenge_accuracy": 1, "genuine": 1},
                     "reasoning": "Trainee covered the key points across the conversation; no further gaps to probe.",
                 }
         else:
@@ -307,11 +335,12 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
     if trainee_turns >= EXPLAIN_MAX_TURNS and result.get("action") != "final":
         result = {
             "action": "final",
-            "scores": {"age_appropriateness": 0, "clarity": 0, "accuracy": 0, "genuine": 0},
+            "scores": {"age_appropriateness": 0, "clarity": 0, "gameplay_accuracy": 0, "challenge_accuracy": 0, "genuine": 0},
             "reasoning": "Reached the maximum number of follow-up questions without a clear finalization from the model.",
         }
     if result.get("action") == "final":
         result.setdefault("scores", {}).setdefault("genuine", 0)
+        result.setdefault("new_idea", None)
     return result
 
 
@@ -329,6 +358,7 @@ async def explain_save(req: Request, authorization: Optional[str] = Header(None)
         "history": b.get("history") or [],
         "scores": b.get("scores") or {},
         "reasoning": b.get("reasoning") or "",
+        "new_idea": b.get("new_idea") or None,
     }
     _redis("LPUSH", EXPLAIN_LIST_KEY, json.dumps(rec, ensure_ascii=False))
     return {"ok": True, "id": rec["id"]}
