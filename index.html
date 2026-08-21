@@ -111,6 +111,7 @@ const GAME_ICONS={'match-me':'🎯','colour-flip':'🎨','shape-stitch':'🧵','
 function gameIcon(id){ return GAME_ICONS[id]||'🧩'; }
 
 function scoreTotal(s){ return ['age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine'].reduce((n,k)=>n+(s[k]?1:0),0); }
+const CRITERIA_LABELS={age_appropriateness:'age fit',clarity:'clarity',gameplay_accuracy:'gameplay accuracy',challenge_accuracy:'challenge accuracy',genuine:'genuine'};
 
 const MAX_ATTEMPTS_PER_GAME=2; // original attempt + exactly one re-attempt
 
@@ -373,17 +374,42 @@ function renderFinal(){
       +'<span class="sc '+(s.gameplay_accuracy?'yes':'no')+'">'+(s.gameplay_accuracy?'✓':'✗')+' gameplay accuracy</span>'
       +'<span class="sc '+(s.challenge_accuracy?'yes':'no')+'">'+(s.challenge_accuracy?'✓':'✗')+' challenge accuracy</span>'
       +'<span class="sc '+(s.genuine?'yes':'no')+'">'+(s.genuine?'✓':'✗')+' genuine</span>'
-    +'</div>'
-    +(STATE.finalResult.reasoning?'<div class="muted" style="font-size:13.5px;margin-bottom:12px;text-align:left">'+esc(STATE.finalResult.reasoning)+'</div>':'')
-    +(STATE.finalResult.suggestion?'<div class="feedback-box" style="margin-bottom:12px;text-align:left"><div class="ft">🎯 from Housie</div><div style="font-size:13.5px">'+esc(STATE.finalResult.suggestion)+'</div></div>':'')
-    +(STATE.finalResult.new_idea?'<div class="feedback-box" style="margin-bottom:12px;text-align:left"><div class="ft">💡 new idea from '+esc(TRAINEE.name||'you')+'</div><div style="font-size:13.5px">'+esc(STATE.finalResult.new_idea)+'</div></div>':'');
+    +'</div>';
+  // "reasoning" is the admin/dashboard-only technical note — never shown here.
+  const feedbackWrap=document.createElement('div'); feedbackWrap.style.textAlign='left';
+  if(STATE.finalResult.strengths){
+    const box=document.createElement('div'); box.className='feedback-box'; box.style.background='var(--sage-tint)'; box.style.border='1px solid #cfe4c4';
+    box.innerHTML='<div class="ft" style="color:var(--sage)">✅ what you did well</div><div style="font-size:13.5px">'+esc(STATE.finalResult.strengths)+'</div>';
+    feedbackWrap.appendChild(box);
+  }
+  const improvements=STATE.finalResult.improvements||[];
+  if(improvements.length){
+    const box=document.createElement('div'); box.className='feedback-box';
+    let inner='<div class="ft">🎯 what to improve</div>';
+    improvements.forEach(imp=>{
+      const label=CRITERIA_LABELS[imp.criterion]||imp.criterion||'';
+      inner+='<div style="margin-bottom:10px"><div style="font-weight:800;font-size:13px;color:var(--coral-dark)">'+esc(label)+'</div>'
+        +'<div style="font-size:13.5px;margin-top:2px">'+esc(imp.reason||'')+'</div>'
+        +(imp.fix?'<div style="font-size:13.5px;margin-top:3px"><b>Try this:</b> '+esc(imp.fix)+'</div>':'')
+        +'</div>';
+    });
+    box.innerHTML=inner;
+    feedbackWrap.appendChild(box);
+  }
+  if(STATE.finalResult.new_idea){
+    const box=document.createElement('div'); box.className='feedback-box';
+    box.innerHTML='<div class="ft">💡 new idea from '+esc(TRAINEE.name||'you')+'</div><div style="font-size:13.5px">'+esc(STATE.finalResult.new_idea)+'</div>';
+    feedbackWrap.appendChild(box);
+  }
+  card.appendChild(feedbackWrap);
   const saveBtn=document.createElement('button'); saveBtn.className='btn'; saveBtn.style.width='100%'; saveBtn.textContent='save & back to checklist';
   saveBtn.onclick=async()=>{
     saveBtn.disabled=true; saveBtn.textContent='saving…';
     try{
       const r=await fetch(API+'/api/explain/save',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},authHeader()),body:JSON.stringify({
         game_id:STATE.game.id, game_name:STATE.game.name, age_band:STATE.ageBand, trainee_name:TRAINEE.name,
-        history:STATE.history, scores:s, reasoning:STATE.finalResult.reasoning||'', new_idea:STATE.finalResult.new_idea||null, suggestion:STATE.finalResult.suggestion||''
+        history:STATE.history, scores:s, reasoning:STATE.finalResult.reasoning||'', new_idea:STATE.finalResult.new_idea||null,
+        strengths:STATE.finalResult.strengths||'', improvements:STATE.finalResult.improvements||[]
       })});
       if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not save'); }
       renderChecklist();

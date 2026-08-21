@@ -484,16 +484,26 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
         "capture it in a \"new_idea\" field (a short, cleaned-up sentence describing the idea). If there "
         "was no new idea (they just repeated or paraphrased the documented answer, or gave nothing "
         "usable), set \"new_idea\" to null. Only include \"new_idea\" in the final action, not in ask.\n\n"
-        "Also when finalizing, include a \"suggestion\" field: one short, concrete, actionable sentence. "
-        "If any criterion scored 0, target the single most important miss with a specific fix (e.g. "
-        "'Next time, speak directly to the children — try starting with \"you pick a bead...\" instead "
-        "of describing what they do'). If all five criteria scored 1, make it a brief, genuine "
-        "encouragement, not a fix (e.g. 'Great work — this was clear, accurate, and in your own words').\n\n"
+        "Also when finalizing, include trainee-facing feedback split into two parts (the \"reasoning\" "
+        "field above is a separate, more technical note for the admin dashboard only — it is NEVER "
+        "shown to the trainee, so it can be blunt; these two fields ARE shown to the trainee, so they "
+        "must be constructive and encouraging in tone even when pointing out a miss):\n"
+        "  - \"strengths\": one specific, genuine sentence about what they did well — name the actual "
+        "thing (e.g. 'You clearly explained the goal and the turn order' not 'good job'). Always "
+        "present, even on a low score — find something real and specific to credit.\n"
+        "  - \"improvements\": an array with one entry for EVERY criterion that scored 0 (empty array "
+        "if all five scored 1). Each entry: "
+        '{"criterion":"<the criterion key>","reason":"<specific, concrete reason this point was lost, '
+        "referencing what they actually said>\",\"fix\":\"<a specific, actionable way to improve — a "
+        "concrete example to use, a tone adjustment, simpler wording, a particular step to add — not a "
+        'vague "explain more clearly">"}. Keep the tone constructive, never harsh, even though the '
+        "reason is specific about the gap.\n\n"
         "Respond with ONLY one JSON object, no other text, no markdown fences, in one of "
         "these two shapes:\n"
         '{"action":"ask","question":"..."}\n'
         'or\n'
-        '{"action":"final","scores":{"age_appropriateness":0,"clarity":0,"gameplay_accuracy":0,"challenge_accuracy":0,"genuine":0},"reasoning":"...","new_idea":null,"suggestion":"..."}'
+        '{"action":"final","scores":{"age_appropriateness":0,"clarity":0,"gameplay_accuracy":0,"challenge_accuracy":0,"genuine":0},'
+        '"reasoning":"...","new_idea":null,"strengths":"...","improvements":[{"criterion":"...","reason":"...","fix":"..."}]}'
     )
     transcript = "\n".join(f"{h.get('role')}: {h.get('text','')}" for h in history)
     result = _gemini_json(system, transcript or "(no explanation given yet)")
@@ -516,6 +526,8 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
                     "action": "final",
                     "scores": {"age_appropriateness": 1, "clarity": 1, "gameplay_accuracy": 1, "challenge_accuracy": 1, "genuine": 1},
                     "reasoning": "Trainee covered the key points across the conversation; no further gaps to probe.",
+                    "strengths": "You covered the key points across the conversation, including the difficulty adjustment.",
+                    "improvements": [],
                 }
         else:
             fallback_pool = [
@@ -538,10 +550,14 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
             "action": "final",
             "scores": {"age_appropriateness": 0, "clarity": 0, "gameplay_accuracy": 0, "challenge_accuracy": 0, "genuine": 0},
             "reasoning": "Reached the maximum number of follow-up questions without a clear finalization from the model.",
+            "strengths": "You stayed with it through several follow-up questions.",
+            "improvements": [{"criterion": k, "reason": "This wasn't confirmed within the allowed number of follow-ups.", "fix": "Try covering this clearly in your first answer next time."} for k in ("age_appropriateness", "clarity", "gameplay_accuracy", "challenge_accuracy", "genuine")],
         }
     if result.get("action") == "final":
         result.setdefault("scores", {}).setdefault("genuine", 0)
         result.setdefault("new_idea", None)
+        result.setdefault("strengths", "")
+        result.setdefault("improvements", [])
         result.setdefault("suggestion", "")
     return result
 
@@ -583,7 +599,8 @@ async def explain_save(req: Request, authorization: Optional[str] = Header(None)
         "scores": b.get("scores") or {},
         "reasoning": b.get("reasoning") or "",
         "new_idea": b.get("new_idea") or None,
-        "suggestion": b.get("suggestion") or "",
+        "strengths": b.get("strengths") or "",
+        "improvements": b.get("improvements") or [],
     }
     _redis("LPUSH", EXPLAIN_LIST_KEY, json.dumps(rec, ensure_ascii=False))
     return {"ok": True, "id": rec["id"]}

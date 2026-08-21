@@ -151,7 +151,13 @@ function recordsView(list){
     });
     html+='<span class="pill" style="margin-left:4px">'+total+'/5</span>';
     html+='</div>';
-    if(r.reasoning) html+='<div class="txt"><span class="lab">scoring notes</span>'+esc(r.reasoning)+'</div>';
+    if(r.reasoning) html+='<div class="txt"><span class="lab">admin-only scoring notes</span>'+esc(r.reasoning)+'</div>';
+    if(r.strengths) html+='<div class="txt" style="background:var(--sage-tint)"><span class="lab">✅ what they did well</span>'+esc(r.strengths)+'</div>';
+    if(r.improvements&&r.improvements.length){
+      let imp='<div class="txt" style="background:var(--coral-tint)"><span class="lab">🎯 what to improve</span>';
+      r.improvements.forEach(x=>{ imp+='<div style="margin-bottom:6px"><b>'+esc(scoreLabels[x.criterion]||x.criterion||'')+':</b> '+esc(x.reason||'')+(x.fix?' <i>— '+esc(x.fix)+'</i>':'')+'</div>'; });
+      html+=imp+'</div>';
+    }
     if(r.suggestion) html+='<div class="txt" style="background:var(--coral-tint)"><span class="lab">🎯 suggestion</span>'+esc(r.suggestion)+'</div>';
     if(r.new_idea) html+='<div class="txt" style="background:var(--teal-tint)"><span class="lab">💡 new idea</span>'+esc(r.new_idea)+'</div>';
     html+='<button class="ghost" style="margin-top:4px" onclick="const t=document.getElementById(\''+uid+'\');t.style.display=t.style.display===\'none\'?\'block\':\'none\'">view transcript</button>';
