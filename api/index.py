@@ -21,6 +21,11 @@ placeholders, replace them before relying on this for anything real):
   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN  (Upstash)
   GEMINI_API_KEY                              — Google AI Studio key (free tier)
   GEMINI_MODEL                                — defaults to gemini-flash-lite-latest
+  SMTP_EMAIL / SMTP_APP_PASSWORD              — optional: sends a welcome email with
+             login credentials when a trainee is added, if they have an email on file.
+             Use a Gmail/Workspace address with an App Password (needs 2-Step
+             Verification enabled) — free, no third-party service. If unset, trainee
+             creation still works, it just skips the email.
 
 Trainees are stored in Redis (admin-managed at runtime, not in env vars).
 Their PIN is stored as-is (not hashed) — this is a low-stakes internal
@@ -37,6 +42,8 @@ import hashlib
 import urllib.request
 import urllib.error
 import io
+import smtplib
+from email.mime.text import MIMEText
 from typing import Optional
 
 from fastapi import FastAPI, Request, HTTPException, Header
@@ -59,6 +66,11 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
 EXPLAIN_MIN_TURNS = 2
 EXPLAIN_MAX_TURNS = 5
+
+SMTP_EMAIL = os.environ.get("SMTP_EMAIL")
+SMTP_APP_PASSWORD = os.environ.get("SMTP_APP_PASSWORD")
+SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 
 CATEGORIES = ["art-design", "public-speaking", "robotics", "music", "chess"]
 
@@ -299,6 +311,35 @@ async def trainee_status(authorization: Optional[str] = Header(None)):
 
 # ---------- admin: trainee management ----------
 
+def _send_welcome_email(to_email: str, trainee: dict, site_url: str) -> bool:
+    """Best-effort welcome email with login credentials. Returns False (never
+    raises) if SMTP isn't configured or sending fails — trainee creation must
+    never be blocked by an email problem."""
+    if not SMTP_EMAIL or not SMTP_APP_PASSWORD or not to_email:
+        return False
+    body = (
+        f"Hi {trainee['name']},\n\n"
+        f"You've been added to the Openhouse game explanation check"
+        f"{' (' + trainee['category'] + ')' if trainee.get('category') else ''}.\n\n"
+        f"Sign in here: {site_url}\n"
+        f"Phone number: {trainee['phone']}\n"
+        f"PIN: {trainee['pin']}\n\n"
+        "— Housie"
+    )
+    msg = MIMEText(body)
+    msg["Subject"] = "Your Openhouse game explanation check login"
+    msg["From"] = SMTP_EMAIL
+    msg["To"] = to_email
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as server:
+            server.starttls()
+            server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
+            server.send_message(msg)
+        return True
+    except Exception:
+        return False
+
+
 @app.post("/api/admin/trainees")
 async def add_trainee(req: Request, authorization: Optional[str] = Header(None)):
     _check(authorization, {"staff"})
@@ -308,18 +349,23 @@ async def add_trainee(req: Request, authorization: Optional[str] = Header(None))
     pin = (b.get("pin") or "").strip()
     category = (b.get("category") or "").strip()
     cohort = (b.get("cohort") or "").strip()
+    email = (b.get("email") or "").strip()
     if not phone or not name or not pin:
         raise HTTPException(400, "phone, name and pin are required")
     if category not in CATEGORIES:
         raise HTTPException(400, f"category must be one of {CATEGORIES}")
     rec = {
         "phone": phone, "name": name, "pin": pin,
-        "category": category, "cohort": cohort,
+        "category": category, "cohort": cohort, "email": email,
         "approved": False,
         "added_at": time.strftime("%Y-%m-%d %H:%M"),
     }
     _redis("HSET", TRAINEES_KEY, phone, json.dumps(rec, ensure_ascii=False))
-    return {"ok": True, "trainee": rec}
+    email_sent = False
+    if email:
+        site_url = str(req.base_url).rstrip("/")
+        email_sent = _send_welcome_email(email, rec, site_url)
+    return {"ok": True, "trainee": rec, "email_sent": email_sent}
 
 
 @app.post("/api/admin/trainees/approve")
