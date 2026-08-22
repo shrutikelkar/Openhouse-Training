@@ -664,7 +664,11 @@ function render(){
   if(ACTIVE_TAB==='trainees'){ traineesTab(); return; }
   if(ACTIVE_TAB==='accuracy'){ accuracyTab(); return; }
   if(ACTIVE_TAB==='charts'){ chartsTab(); return; }
-  if(!ALL.length){ root.innerHTML+='<div class="empty">No game explanations recorded yet.</div>'; return; }
+  if(!ALL.length){
+    const empty=document.createElement('div'); empty.className='empty'; empty.textContent='No game explanations recorded yet.';
+    root.appendChild(empty);
+    return;
+  }
   responsesTab();
 }
 
