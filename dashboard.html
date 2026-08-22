@@ -127,12 +127,15 @@ function byGameTable(list){
   return html;
 }
 
-// first (oldest) record per trainee_phone+game_id, computed against the FULL
-// dataset so filtering the visible list never changes what counts as a re-attempt
+// first (oldest) record per trainee_name+game_id, computed against the FULL
+// dataset so filtering the visible list never changes what counts as a re-attempt.
+// Keyed by name (not phone) to match accuracyTab's re-attempt count — a trainee's
+// phone can be blank on older records, which would otherwise split one trainee's
+// attempts across two keys and undercount re-attempts.
 function firstAttemptIds(){
   const earliest={};
   ALL.forEach(r=>{
-    const key=(r.trainee_phone||r.trainee_name||'')+'::'+r.game_id;
+    const key=(r.trainee_name||'')+'::'+r.game_id;
     if(!earliest[key] || (r.received_at||'')<(earliest[key].received_at||'')) earliest[key]=r;
   });
   return new Set(Object.values(earliest).map(r=>r.id));
@@ -392,7 +395,7 @@ function traineesTab(){
 function reattemptsView(){
   const byKey={};
   ALL.filter(r=>!TRAINEE_FILTER||r.trainee_name===TRAINEE_FILTER).forEach(r=>{
-    const key=(r.trainee_phone||r.trainee_name||'')+'::'+r.game_id;
+    const key=(r.trainee_name||'')+'::'+r.game_id;
     (byKey[key]=byKey[key]||[]).push(r);
   });
   const reattempted=Object.values(byKey).filter(list=>list.length>1);
