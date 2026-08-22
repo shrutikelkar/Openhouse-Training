@@ -390,7 +390,17 @@ function renderFinal(){
       +'<span class="sc '+(s.genuine?'yes':'no')+'">'+(s.genuine?'✓':'✗')+' genuine</span>'
     +'</div>';
   // "reasoning" is the admin/dashboard-only technical note — never shown here.
+  const priorAttempts=attemptCountByGame()[STATE.game.id]||0;
+  const notGenuine=!s.genuine;
+  const canRedo=notGenuine && (priorAttempts+1)<MAX_ATTEMPTS_PER_GAME;
   const feedbackWrap=document.createElement('div'); feedbackWrap.style.textAlign='left';
+  if(notGenuine){
+    const box=document.createElement('div'); box.className='feedback-box'; box.style.background='var(--coral-tint)'; box.style.border='1.5px solid var(--coral)';
+    box.innerHTML='<div class="ft" style="color:var(--coral-dark)">🔁 please redo this one</div>'
+      +'<div style="font-size:13.5px">This sounded like it was read from the material rather than explained in your own words. '
+      +(canRedo?'Try explaining it again, in your own words.':'You\'ve used both attempts for this game — talk to your admin if you\'d like another try.')+'</div>';
+    feedbackWrap.appendChild(box);
+  }
   if(STATE.finalResult.strengths){
     const box=document.createElement('div'); box.className='feedback-box'; box.style.background='var(--sage-tint)'; box.style.border='1px solid #cfe4c4';
     box.innerHTML='<div class="ft" style="color:var(--sage)">✅ what you did well</div><div style="font-size:13.5px">'+esc(STATE.finalResult.strengths)+'</div>';
@@ -416,17 +426,20 @@ function renderFinal(){
     feedbackWrap.appendChild(box);
   }
   card.appendChild(feedbackWrap);
-  const saveBtn=document.createElement('button'); saveBtn.className='btn'; saveBtn.style.width='100%'; saveBtn.textContent='save & back to checklist';
+  const saveBtn=document.createElement('button'); saveBtn.className='btn'; saveBtn.style.width='100%';
+  saveBtn.textContent=canRedo?'save & redo now →':'save & back to checklist';
   saveBtn.onclick=async()=>{
+    const game=STATE.game;
     saveBtn.disabled=true; saveBtn.textContent='saving…';
     try{
       const r=await fetch(API+'/api/explain/save',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},authHeader()),body:JSON.stringify({
-        game_id:STATE.game.id, game_name:STATE.game.name, age_band:STATE.ageBand, trainee_name:TRAINEE.name,
+        game_id:game.id, game_name:game.name, age_band:STATE.ageBand, trainee_name:TRAINEE.name,
         history:STATE.history, scores:s, reasoning:STATE.finalResult.reasoning||'', new_idea:STATE.finalResult.new_idea||null,
         strengths:STATE.finalResult.strengths||'', improvements:STATE.finalResult.improvements||[]
       })});
       if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not save'); }
-      renderChecklist();
+      if(canRedo){ await fetchMyRecords(); startGame(game); }
+      else renderChecklist();
     }catch(e){ saveBtn.textContent=e.message||'could not save — try again'; saveBtn.disabled=false; }
   };
   card.appendChild(saveBtn);
