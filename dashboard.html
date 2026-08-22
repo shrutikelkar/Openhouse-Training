@@ -191,6 +191,37 @@ function newIdeasView(list){
   return sorted.map(r=>'<div class="txt" style="background:var(--teal-tint)"><span class="lab">'+esc(r.trainee_name||'?')+' · '+esc(r.game_name||'')+'</span>'+esc(r.new_idea)+'</div>').join('');
 }
 
+function csvEscape(v){
+  const s=(v==null?'':String(v));
+  return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+}
+function downloadRecordsCSV(list){
+  const cols=['trainee_name','trainee_phone','game_name','category','cohort','age_band','received_at',
+    'age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine','total_score',
+    'strengths','improvements','new_idea','reasoning'];
+  const criteriaLabels={age_appropriateness:'Age fit',clarity:'Clarity',gameplay_accuracy:'Gameplay accuracy',challenge_accuracy:'Challenge accuracy',genuine:'Genuine'};
+  const rows=list.map(r=>{
+    const s=r.scores||{};
+    const improvementsStr=(r.improvements||[]).map(x=>(criteriaLabels[x.criterion]||x.criterion)+': '+(x.reason||'')+(x.fix?' | fix: '+x.fix:'')).join(' ;; ');
+    const vals={
+      trainee_name:r.trainee_name, trainee_phone:r.trainee_phone, game_name:r.game_name, category:r.category,
+      cohort:r.cohort, age_band:r.age_band, received_at:r.received_at,
+      age_appropriateness:s.age_appropriateness?1:0, clarity:s.clarity?1:0, gameplay_accuracy:s.gameplay_accuracy?1:0,
+      challenge_accuracy:s.challenge_accuracy?1:0, genuine:s.genuine?1:0, total_score:scoreTotal(r),
+      strengths:r.strengths||'', improvements:improvementsStr, new_idea:r.new_idea||'', reasoning:r.reasoning||''
+    };
+    return cols.map(c=>csvEscape(vals[c])).join(',');
+  });
+  const csv=[cols.join(',')].concat(rows).join('\r\n');
+  const blob=new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='game-explanation-checks-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function responsesTab(){
   const games=[...new Set(ALL.map(r=>r.game_name).filter(Boolean))].sort();
   const categories=[...new Set(ALL.map(r=>r.category).filter(Boolean))].sort();
@@ -199,7 +230,8 @@ function responsesTab(){
   filterRow.innerHTML='<span style="font-weight:800;font-size:13px;color:var(--teal)">Filter</span>'
     +'<select id="game-select"><option value="">All games</option>'+games.map(g=>'<option value="'+esc(g)+'"'+(g===GAME_FILTER?' selected':'')+'>'+esc(g)+'</option>').join('')+'</select>'
     +(categories.length?'<select id="category-select"><option value="">All categories</option>'+categories.map(c=>'<option value="'+esc(c)+'"'+(c===CATEGORY_FILTER?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select>':'')
-    +(TRAINEE_FILTER?'<span class="pill coral">trainee: '+esc(TRAINEE_FILTER)+' <span style="cursor:pointer" id="clear-trainee-filter">✕</span></span>':'');
+    +(TRAINEE_FILTER?'<span class="pill coral">trainee: '+esc(TRAINEE_FILTER)+' <span style="cursor:pointer" id="clear-trainee-filter">✕</span></span>':'')
+    +'<button class="ghost" id="download-csv" style="margin-left:auto">⬇ download CSV</button>';
   root.appendChild(filterRow);
 
   const filtered=ALL.filter(r=>(!GAME_FILTER||r.game_name===GAME_FILTER)&&(!TRAINEE_FILTER||r.trainee_name===TRAINEE_FILTER)&&(!CATEGORY_FILTER||r.category===CATEGORY_FILTER));
@@ -230,6 +262,8 @@ function responsesTab(){
   if(cs) cs.onchange=()=>{ CATEGORY_FILTER=cs.value; render(); };
   const ctf=document.getElementById('clear-trainee-filter');
   if(ctf) ctf.onclick=()=>{ TRAINEE_FILTER=''; render(); };
+  const dl=document.getElementById('download-csv');
+  if(dl) dl.onclick=()=>downloadRecordsCSV(filtered);
 }
 
 function categoryGameCount(category){
