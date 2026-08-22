@@ -14,6 +14,7 @@
       <div><div class="eyebrow">openhouse · admin</div><h1>game explanation dashboard</h1><div class="tagline">choose to be better</div></div>
     </div>
     <div class="sp"></div>
+    <select id="trainee-picker" style="display:none;width:auto;margin-bottom:0;max-width:200px"><option value="">All trainees</option></select>
     <button class="ghost" id="refresh" style="display:none">refresh</button>
     <button class="ghost" id="signout" style="display:none">sign out</button>
   </div>
@@ -25,6 +26,15 @@ const TK='oh_explain_token';
 const root=document.getElementById('root');
 const API=(window.location.protocol==='file:'||window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:8000':'';
 let ALL=[], TRAINEES=[], ACTIVE_TAB='responses', GAME_FILTER='', TRAINEE_FILTER='', CATEGORY_FILTER='';
+
+function syncTraineePicker(){
+  const picker=document.getElementById('trainee-picker');
+  if(!ALL.length && !TRAINEES.length){ picker.style.display='none'; return; }
+  picker.style.display='inline-block';
+  const names=[...new Set(ALL.map(r=>r.trainee_name).filter(Boolean).concat(TRAINEES.map(t=>t.name).filter(Boolean)))].sort();
+  picker.innerHTML='<option value="">All trainees</option>'+names.map(n=>'<option value="'+esc(n)+'"'+(n===TRAINEE_FILTER?' selected':'')+'>'+esc(n)+'</option>').join('');
+  picker.onchange=()=>{ TRAINEE_FILTER=picker.value; render(); };
+}
 
 function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
 
@@ -69,6 +79,7 @@ function diffHighlight(original, text){
 function loginView(msg){
   document.getElementById('refresh').style.display='none';
   document.getElementById('signout').style.display='none';
+  document.getElementById('trainee-picker').style.display='none';
   root.innerHTML='';
   const c=document.createElement('div'); c.className='card'; c.style.maxWidth='400px'; c.style.margin='10px auto';
   c.innerHTML='<div style="font-weight:800;font-size:18px;margin-bottom:2px">sign in</div><div class="muted" style="font-size:13px;margin-bottom:12px">admin access</div>';
@@ -182,14 +193,13 @@ function newIdeasView(list){
 
 function responsesTab(){
   const games=[...new Set(ALL.map(r=>r.game_name).filter(Boolean))].sort();
-  const trainees=[...new Set(ALL.map(r=>r.trainee_name).filter(Boolean))].sort();
   const categories=[...new Set(ALL.map(r=>r.category).filter(Boolean))].sort();
 
   const filterRow=document.createElement('div'); filterRow.className='filters';
   filterRow.innerHTML='<span style="font-weight:800;font-size:13px;color:var(--teal)">Filter</span>'
     +'<select id="game-select"><option value="">All games</option>'+games.map(g=>'<option value="'+esc(g)+'"'+(g===GAME_FILTER?' selected':'')+'>'+esc(g)+'</option>').join('')+'</select>'
-    +'<select id="trainee-select"><option value="">All trainees</option>'+trainees.map(t=>'<option value="'+esc(t)+'"'+(t===TRAINEE_FILTER?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select>'
-    +(categories.length?'<select id="category-select"><option value="">All categories</option>'+categories.map(c=>'<option value="'+esc(c)+'"'+(c===CATEGORY_FILTER?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select>':'');
+    +(categories.length?'<select id="category-select"><option value="">All categories</option>'+categories.map(c=>'<option value="'+esc(c)+'"'+(c===CATEGORY_FILTER?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select>':'')
+    +(TRAINEE_FILTER?'<span class="pill coral">trainee: '+esc(TRAINEE_FILTER)+' <span style="cursor:pointer" id="clear-trainee-filter">✕</span></span>':'');
   root.appendChild(filterRow);
 
   const filtered=ALL.filter(r=>(!GAME_FILTER||r.game_name===GAME_FILTER)&&(!TRAINEE_FILTER||r.trainee_name===TRAINEE_FILTER)&&(!CATEGORY_FILTER||r.category===CATEGORY_FILTER));
@@ -216,10 +226,10 @@ function responsesTab(){
 
   const gs=document.getElementById('game-select');
   if(gs) gs.onchange=()=>{ GAME_FILTER=gs.value; render(); };
-  const ts=document.getElementById('trainee-select');
-  if(ts) ts.onchange=()=>{ TRAINEE_FILTER=ts.value; render(); };
   const cs=document.getElementById('category-select');
   if(cs) cs.onchange=()=>{ CATEGORY_FILTER=cs.value; render(); };
+  const ctf=document.getElementById('clear-trainee-filter');
+  if(ctf) ctf.onclick=()=>{ TRAINEE_FILTER=''; render(); };
 }
 
 function categoryGameCount(category){
@@ -292,7 +302,7 @@ function traineesTab(){
 
 function reattemptsView(){
   const byKey={};
-  ALL.forEach(r=>{
+  ALL.filter(r=>!TRAINEE_FILTER||r.trainee_name===TRAINEE_FILTER).forEach(r=>{
     const key=(r.trainee_phone||r.trainee_name||'')+'::'+r.game_id;
     (byKey[key]=byKey[key]||[]).push(r);
   });
@@ -318,9 +328,9 @@ function accuracyTab(){
   const card=document.createElement('div'); card.className='card';
   let html='<div style="font-weight:800;font-size:16px;margin-bottom:10px">scores by trainee</div>'
     +'<div class="muted" style="font-size:13px;margin-bottom:12px">every scored criterion, per trainee, across all recorded attempts</div>';
-  const names=[...new Set(ALL.map(r=>r.trainee_name).filter(Boolean))].sort();
+  const names=[...new Set(ALL.map(r=>r.trainee_name).filter(Boolean))].filter(n=>!TRAINEE_FILTER||n===TRAINEE_FILTER).sort();
   if(!names.length){
-    html+='<div class="empty">No data yet.</div>';
+    html+='<div class="empty">'+(TRAINEE_FILTER?'No data yet for '+esc(TRAINEE_FILTER)+'.':'No data yet.')+'</div>';
   } else {
     html+='<div class="table-wrap"><table class="sum-table"><thead><tr><th>Trainee</th><th>Category</th><th>checks</th>'
       +'<th>age fit</th><th>clarity</th><th>gameplay accuracy</th><th>challenge accuracy</th><th>genuine</th><th>re-attempts</th></tr></thead><tbody>';
@@ -356,6 +366,7 @@ function ynBadge(pct){
 function render(){
   document.getElementById('refresh').style.display='inline-block';
   document.getElementById('signout').style.display='inline-block';
+  syncTraineePicker();
   root.innerHTML='';
 
   const tabBar=document.createElement('div'); tabBar.className='tabs';
