@@ -626,6 +626,12 @@ async def explain_save(req: Request, authorization: Optional[str] = Header(None)
         "improvements": b.get("improvements") or [],
     }
     _redis("LPUSH", EXPLAIN_LIST_KEY, json.dumps(rec, ensure_ascii=False))
+    # A new response (first attempt or re-attempt) means the downloadable
+    # document has changed — any prior approval covered the old content, not
+    # this, so it needs a fresh review before the trainee can download again.
+    if role == "trainee" and t and t.get("approved"):
+        t["approved"] = False
+        _redis("HSET", TRAINEES_KEY, sub, json.dumps(t, ensure_ascii=False))
     return {"ok": True, "id": rec["id"]}
 
 
