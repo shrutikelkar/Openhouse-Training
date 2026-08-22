@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>game explanation · dashboard</title>
+<title>Game Ready · dashboard</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,7 +11,7 @@
   <div class="topbar">
     <div class="brand-row" style="margin-bottom:0">
       <div id="headerMascot" class="mascot"></div>
-      <div><div class="eyebrow">openhouse · admin</div><h1>game explanation dashboard</h1><div class="tagline">choose to be better</div></div>
+      <div><div class="eyebrow">openhouse · admin</div><h1>Game Ready dashboard</h1></div>
     </div>
     <div class="sp"></div>
     <select id="trainee-picker" style="display:none;width:auto;margin-bottom:0;max-width:200px"><option value="">All trainees</option></select>
@@ -97,6 +97,9 @@ function loginView(msg){
   }
   b.onclick=go; pw.addEventListener('keydown',e=>{if(e.key==='Enter')go();});
   c.append(em,pw,er,b); root.appendChild(c);
+  const back=document.createElement('div'); back.style.cssText='text-align:center;margin-top:10px';
+  back.innerHTML='<a href="index.html" style="color:var(--teal);font-size:13px;text-decoration:none">← back to Game Ready</a>';
+  root.appendChild(back);
 }
 
 function scoreTotal(r){ const s=r.scores||{}; return ['age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine'].reduce((n,k)=>n+(s[k]?1:0),0); }
@@ -217,7 +220,7 @@ function downloadRecordsCSV(list){
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
-  a.download='game-explanation-checks-'+new Date().toISOString().slice(0,10)+'.csv';
+  a.download='game-ready-checks-'+new Date().toISOString().slice(0,10)+'.csv';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
