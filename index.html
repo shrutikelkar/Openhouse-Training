@@ -218,9 +218,6 @@ async function renderChecklist(){
     dlBtn.onclick=()=>downloadAssessmentDocx(dlBtn);
     actions.appendChild(dlBtn);
   }
-  const refresh=document.createElement('button'); refresh.className='ghost'; refresh.style.flex='none'; refresh.textContent='refresh';
-  refresh.onclick=()=>renderChecklist();
-  actions.appendChild(refresh);
   const signout=document.createElement('button'); signout.className='ghost'; signout.style.flex='none'; signout.textContent='sign out';
   signout.onclick=()=>{ localStorage.removeItem(TK); localStorage.removeItem('oh_trainee_info'); loginView(); };
   actions.appendChild(signout);

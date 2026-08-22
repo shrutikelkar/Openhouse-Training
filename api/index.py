@@ -360,11 +360,14 @@ async def add_trainee(req: Request, authorization: Optional[str] = Header(None))
         pin = f"{int(d):02d}{int(m):02d}"
     except ValueError:
         raise HTTPException(400, "cohort must be a valid date (YYYY-MM-DD)")
+    # Re-submitting this form for a phone that already has a trainee (e.g. to
+    # fix a typo) must not silently wipe their approval or creation date.
+    existing = _get_trainee(phone)
     rec = {
         "phone": phone, "name": name, "pin": pin,
         "category": category, "cohort": cohort, "email": email,
-        "approved": False,
-        "added_at": time.strftime("%Y-%m-%d %H:%M"),
+        "approved": existing.get("approved", False) if existing else False,
+        "added_at": existing.get("added_at") if existing else time.strftime("%Y-%m-%d %H:%M"),
     }
     _redis("HSET", TRAINEES_KEY, phone, json.dumps(rec, ensure_ascii=False))
     email_sent = False
@@ -634,6 +637,30 @@ async def list_explanations(authorization: Optional[str] = Header(None)):
     return [json.loads(x) for x in rows]
 
 
+@app.post("/api/admin/explanations/{record_id}/feedback")
+async def edit_explanation_feedback(record_id: str, req: Request, authorization: Optional[str] = Header(None)):
+    """Lets staff correct the trainee-facing strengths/improvements text before
+    approving a download — the same text the trainee sees on screen and in
+    their downloaded assessment."""
+    _check(authorization, {"staff"})
+    b = await req.json()
+    res = _redis("LRANGE", EXPLAIN_LIST_KEY, "0", "999")
+    rows = res.get("result") or []
+    all_recs = [json.loads(x) for x in rows]
+    found = None
+    for r in all_recs:
+        if r.get("id") == record_id:
+            r["strengths"] = b.get("strengths") or ""
+            r["improvements"] = b.get("improvements") or []
+            found = r
+            break
+    if not found:
+        raise HTTPException(404, "record not found")
+    _redis("DEL", EXPLAIN_LIST_KEY)
+    _redis("RPUSH", EXPLAIN_LIST_KEY, *[json.dumps(x, ensure_ascii=False) for x in all_recs])
+    return {"ok": True, "record": found}
+
+
 @app.get("/api/my-explanations")
 async def my_explanations(authorization: Optional[str] = Header(None)):
     role, sub = _check(authorization, {"trainee"})
@@ -724,15 +751,17 @@ async def my_assessment_docx(authorization: Optional[str] = Header(None)):
             mark = "✓" if scores.get(k) else "✗"
             run = p.add_run(f"{mark} {label}")
             run.font.color.rgb = BRAND_TEAL if scores.get(k) else RGBColor(0xC0, 0x49, 0x2F)
-        if r.get("reasoning"):
+        if r.get("strengths"):
             p = doc.add_paragraph()
-            p.add_run("Notes: ").bold = True
-            p.add_run(r["reasoning"])
-        if r.get("suggestion"):
-            p = doc.add_paragraph()
-            p.add_run("Suggestion: ").bold = True
-            run = p.add_run(r["suggestion"])
-            run.italic = True
+            p.add_run("✅ What you did well: ").bold = True
+            p.add_run(r["strengths"])
+        for imp in (r.get("improvements") or []):
+            label = dict(CRITERIA_LABELS).get(imp.get("criterion"), imp.get("criterion") or "")
+            p = doc.add_paragraph(style="List Bullet")
+            p.add_run(f"🎯 {label}: ").bold = True
+            p.add_run(imp.get("reason") or "")
+            if imp.get("fix"):
+                p.add_run(f" — Try this: {imp['fix']}").italic = True
         if r.get("new_idea"):
             p = doc.add_paragraph()
             p.add_run("💡 Idea suggested: ").bold = True

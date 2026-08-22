@@ -367,14 +367,21 @@ function traineesTab(){
 
   listCard.querySelectorAll('[data-approve-phone]').forEach(btn=>{
     btn.onclick=async()=>{
-      const orig=btn.textContent;
-      btn.disabled=true;
-      try{
-        const r=await fetch(API+'/api/admin/trainees/approve',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},{'Authorization':'Bearer '+localStorage.getItem(TK)}),
-          body:JSON.stringify({phone:btn.getAttribute('data-approve-phone'), approved:btn.getAttribute('data-approve-next')==='true'})});
-        if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not update'); }
-        await loadTrainees(); render();
-      }catch(e){ btn.disabled=false; btn.textContent=orig; alert(e.message); }
+      const phone=btn.getAttribute('data-approve-phone');
+      const nextApproved=btn.getAttribute('data-approve-next')==='true';
+      if(!nextApproved){
+        const orig=btn.textContent;
+        btn.disabled=true;
+        try{
+          const r=await fetch(API+'/api/admin/trainees/approve',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},{'Authorization':'Bearer '+localStorage.getItem(TK)}),
+            body:JSON.stringify({phone, approved:false})});
+          if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not update'); }
+          await loadTrainees(); render();
+        }catch(e){ btn.disabled=false; btn.textContent=orig; alert(e.message); }
+        return;
+      }
+      const trainee=TRAINEES.find(t=>t.phone===phone);
+      openReviewModal(trainee);
     };
   });
 
@@ -405,6 +412,83 @@ function traineesTab(){
       document.getElementById('remove-cancel').onclick=()=>overlay.remove();
     };
   });
+}
+
+function latestPerGameForPhone(phone){
+  const byGame={};
+  ALL.filter(r=>r.trainee_phone===phone).forEach(r=>{
+    const g=r.game_id;
+    if(!byGame[g] || (r.received_at||'')>(byGame[g].received_at||'')) byGame[g]=r;
+  });
+  return Object.values(byGame).sort((a,b)=>(a.received_at||'').localeCompare(b.received_at||''));
+}
+
+function openReviewModal(trainee){
+  const games=latestPerGameForPhone(trainee.phone);
+  const overlay=document.createElement('div'); overlay.className='modal-overlay';
+  const card=document.createElement('div'); card.className='modal-card'; card.style.cssText='max-width:560px;max-height:85vh;overflow-y:auto';
+  let html='<div style="font-weight:800;font-size:17px;margin-bottom:2px">Review '+esc(trainee.name)+'’s assessment</div>'
+    +'<div class="muted" style="font-size:13px;margin-bottom:14px">This is exactly what they’ll see and download once approved — edit anything before approving.</div>';
+  if(!games.length){
+    html+='<div class="empty" style="margin-bottom:14px">No completed games yet.</div>';
+  } else {
+    games.forEach(r=>{
+      const total=scoreTotal(r);
+      html+='<div class="review-game" data-review-id="'+esc(r.id)+'" style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px">'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b>'+esc(r.game_name||r.game_id)+'</b><span class="pill">'+total+'/5</span></div>'
+        +'<label style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--sage);display:block;margin-bottom:3px">✅ what they did well</label>'
+        +'<textarea class="review-strengths" rows="2" style="margin-bottom:8px">'+esc(r.strengths||'')+'</textarea>';
+      const imps=r.improvements||[];
+      if(imps.length){
+        html+='<label style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--coral-dark);display:block;margin-bottom:3px">🎯 what to improve</label>';
+        imps.forEach(imp=>{
+          const label=CRITERIA_CHART_LABELS[imp.criterion]||imp.criterion||'';
+          html+='<div class="review-imp" data-criterion="'+esc(imp.criterion||'')+'" style="margin-bottom:8px;padding:8px;background:var(--subtle);border-radius:9px">'
+            +'<div style="font-size:12px;font-weight:800;color:var(--muted);margin-bottom:4px">'+esc(label)+'</div>'
+            +'<textarea class="review-imp-reason" rows="2" placeholder="reason" style="margin-bottom:4px">'+esc(imp.reason||'')+'</textarea>'
+            +'<input class="review-imp-fix" placeholder="suggested fix" value="'+esc(imp.fix||'')+'">'
+            +'</div>';
+        });
+      }
+      html+='</div>';
+    });
+  }
+  html+='<button class="modal-btn modal-btn-teal" id="review-approve">save & approve download</button>'
+    +'<button class="modal-btn modal-btn-neutral" id="review-cancel">cancel</button>';
+  card.innerHTML=html;
+  overlay.appendChild(card);
+  overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  document.getElementById('review-cancel').onclick=()=>overlay.remove();
+  document.getElementById('review-approve').onclick=async()=>{
+    const approveBtn=document.getElementById('review-approve');
+    approveBtn.disabled=true; approveBtn.textContent='saving…';
+    try{
+      const blocks=Array.from(card.querySelectorAll('.review-game'));
+      for(const block of blocks){
+        const id=block.getAttribute('data-review-id');
+        const strengths=block.querySelector('.review-strengths').value.trim();
+        const improvements=Array.from(block.querySelectorAll('.review-imp')).map(impEl=>({
+          criterion: impEl.getAttribute('data-criterion'),
+          reason: impEl.querySelector('.review-imp-reason').value.trim(),
+          fix: impEl.querySelector('.review-imp-fix').value.trim()
+        }));
+        const r=await fetch(API+'/api/admin/explanations/'+encodeURIComponent(id)+'/feedback',{method:'POST',
+          headers:Object.assign({'Content-Type':'application/json'},{'Authorization':'Bearer '+localStorage.getItem(TK)}),
+          body:JSON.stringify({strengths, improvements})});
+        if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not save edits'); }
+      }
+      const ar=await fetch(API+'/api/admin/trainees/approve',{method:'POST',
+        headers:Object.assign({'Content-Type':'application/json'},{'Authorization':'Bearer '+localStorage.getItem(TK)}),
+        body:JSON.stringify({phone:trainee.phone, approved:true})});
+      if(!ar.ok){ const d=await ar.json().catch(()=>({})); throw new Error(d.detail||'could not approve'); }
+      overlay.remove();
+      await load();
+    }catch(e){
+      approveBtn.disabled=false; approveBtn.textContent='save & approve download';
+      alert(e.message);
+    }
+  };
 }
 
 function reattemptsView(){
