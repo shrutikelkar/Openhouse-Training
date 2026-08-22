@@ -247,7 +247,7 @@ function traineesTab(){
   const cohLabel=document.createElement('div'); cohLabel.className='muted'; cohLabel.style.cssText='font-size:12px;font-weight:700;margin:2px 0 4px';
   cohLabel.textContent='cohort start date (also sets their PIN — day+month, DDMM)';
   const coh=document.createElement('input'); coh.type='date';
-  const pinPreview=document.createElement('div'); pinPreview.style.cssText='font-size:20px;font-weight:800;color:var(--coral-dark);margin:2px 0 10px;user-select:none';
+  const pinPreview=document.createElement('div'); pinPreview.style.cssText='font-size:15px;font-weight:400;font-family:inherit;color:var(--ink);text-align:left;margin:2px 0 10px;user-select:none';
   pinPreview.textContent='PIN: —';
   function derivePin(iso){
     if(!iso) return null;
