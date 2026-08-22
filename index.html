@@ -109,6 +109,7 @@ function categoryGames(){ return (window.GAMES||[]).filter(g=>g.category===TRAIN
 
 const GAME_ICONS={'match-me':'🎯','colour-flip':'🎨','shape-stitch':'🧵','shape-fusion':'🔷','cue-cards':'✏️','artventure':'🎲','imagine-that':'💭','doodle-dash':'⚡','art-gym-book':'📖'};
 function gameIcon(id){ return GAME_ICONS[id]||'🧩'; }
+const GAME_PHOTOS={'match-me':'images/games/match-me.jpg','colour-flip':'images/games/colour-flip.jpg','shape-stitch':'images/games/shape-stitch.jpg','shape-fusion':'images/games/shape-fusion.jpg','cue-cards':'images/games/cue-cards.jpg','artventure':'images/games/artventure.jpg','doodle-dash':'images/games/doodle-dash.jpg','art-gym-book':'images/games/art-gym-book.jpg'};
 
 function scoreTotal(s){ return ['age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine'].reduce((n,k)=>n+(s[k]?1:0),0); }
 const CRITERIA_LABELS={age_appropriateness:'age fit',clarity:'clarity',gameplay_accuracy:'gameplay accuracy',challenge_accuracy:'challenge accuracy',genuine:'genuine'};
@@ -172,7 +173,9 @@ async function renderChecklist(){
     const count=attempts[g.id]||0;
     const canReattempt=rec && count<MAX_ATTEMPTS_PER_GAME;
     const item=document.createElement('div'); item.className='checklist-item'+(rec?' done':'');
-    const icon=document.createElement('div'); icon.className='game-icon'; icon.textContent=gameIcon(g.id);
+    const icon=document.createElement('div'); icon.className='game-icon';
+    if(GAME_PHOTOS[g.id]) icon.innerHTML='<img src="'+GAME_PHOTOS[g.id]+'" alt="" style="width:100%;height:100%;object-fit:cover">';
+    else icon.textContent=gameIcon(g.id);
     item.appendChild(icon);
     const dot=document.createElement('div'); dot.className='check-dot '+(rec?'done':'pending');
     dot.textContent=rec?'✓':'';
