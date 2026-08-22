@@ -18,6 +18,18 @@ body::after{width:400px;height:400px;bottom:-160px;left:-140px;background:radial
 .brand-row .mascot{flex:none}
 .hero{text-align:center;padding:6px 0 4px}
 .hero .mascot{margin:0 auto 8px}
+.hero-panel{position:relative;border-radius:24px;padding:22px 18px 18px;overflow:hidden;
+  background:linear-gradient(135deg,var(--coral-tint) 0%,var(--teal-tint) 55%,var(--sage-tint) 100%)}
+.hero-panel::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(circle at 12% 18%,rgba(239,92,52,.22) 0%,rgba(239,92,52,0) 42%),
+    radial-gradient(circle at 88% 12%,rgba(14,143,163,.22) 0%,rgba(14,143,163,0) 42%),
+    radial-gradient(circle at 50% 95%,rgba(95,145,71,.2) 0%,rgba(95,145,71,0) 48%)}
+.hero-panel>*{position:relative}
+.signin-accent{height:6px;border-radius:999px;margin-bottom:14px;
+  background:linear-gradient(90deg,var(--coral) 0%,var(--teal) 50%,var(--sage) 100%)}
+.input-icon-row{position:relative}
+.input-icon-row input{padding-left:40px}
+.input-icon-row .ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none}
 h1{font-size:23px;font-weight:800;margin:.15em 0;letter-spacing:-.01em}
 .eyebrow{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--coral)}
 .card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:var(--shadow);margin-bottom:14px}
@@ -90,16 +102,17 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--coral)}
 .txt .lab{font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--teal);display:block;margin-bottom:3px}
 .filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
 .filters select{width:auto;margin-bottom:0}
-.checklist-item{display:flex;align-items:center;gap:12px;padding:13px 14px;border:1.5px solid var(--line);
-  border-radius:14px;margin-bottom:9px;background:#fff;box-shadow:var(--shadow);transition:transform .12s,box-shadow .12s}
-.checklist-item:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(44,43,40,.09)}
-.checklist-item.done{border-color:#cfe4c4}
-.game-icon{width:68px;height:68px;border-radius:14px;display:grid;place-items:center;font-size:32px;flex:none;
-  background:var(--subtle);overflow:hidden}
-.checklist-item.done .game-icon{background:var(--sage-tint)}
+.game-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+.game-tile{border:1.5px solid var(--line);border-radius:16px;background:#fff;box-shadow:var(--shadow);
+  overflow:hidden;transition:transform .12s,box-shadow .12s}
+.game-tile:hover{transform:translateY(-2px);box-shadow:0 4px 14px rgba(44,43,40,.09)}
+.game-tile.done{border-color:#cfe4c4}
+.game-tile-img{position:relative;width:100%;aspect-ratio:2/3;background:var(--subtle)}
+.game-tile-body{padding:12px 13px 13px}
 .check-dot{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:13px;flex:none;font-weight:800}
 .check-dot.done{background:var(--sage);color:#fff}
 .check-dot.pending{background:#fff;color:var(--line);border:1.5px dashed var(--line)}
+.game-tile-badge{position:absolute;top:8px;right:8px;box-shadow:0 1px 4px rgba(0,0,0,.2)}
 .progress-ring-wrap{position:relative;width:64px;height:64px;flex:none}
 .progress-ring-wrap svg{transform:rotate(-90deg)}
 .progress-ring-wrap .pct{position:absolute;inset:0;display:grid;place-items:center;font-size:13px;font-weight:800;color:var(--coral-dark)}

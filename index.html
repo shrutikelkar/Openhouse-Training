@@ -59,14 +59,20 @@ function authHeader(){ return {'Authorization':'Bearer '+localStorage.getItem(TK
 
 function loginView(msg){
   root.innerHTML='';
-  const hero=document.createElement('div'); hero.className='hero';
+  const hero=document.createElement('div'); hero.className='hero hero-panel';
   hero.innerHTML='<div class="mascot">'+mascotSVG(80)+'</div><div style="font-weight:800;font-size:17px">hi, I\'m Housie 👋</div><div class="muted" style="font-size:13.5px">I\'ll listen to your game explanations and help you get ready</div>';
   root.appendChild(hero);
   const c=document.createElement('div'); c.className='card'; c.style.maxWidth='400px'; c.style.margin='14px auto 10px';
-  c.innerHTML='<div style="font-weight:800;font-size:18px;margin-bottom:2px">sign in</div><div class="muted" style="font-size:13px;margin-bottom:12px">enter the phone number, name and PIN your admin gave you</div>';
+  c.innerHTML='<div class="signin-accent"></div><div style="font-weight:800;font-size:18px;margin-bottom:2px">sign in</div><div class="muted" style="font-size:13px;margin-bottom:12px">enter the phone number, name and PIN your admin gave you</div>';
+  const phRow=document.createElement('div'); phRow.className='input-icon-row';
   const ph=document.createElement('input'); ph.placeholder='phone number'; ph.type='tel';
+  phRow.innerHTML='<span class="ico">📱</span>'; phRow.appendChild(ph);
+  const nmRow=document.createElement('div'); nmRow.className='input-icon-row';
   const nm=document.createElement('input'); nm.placeholder='your name';
+  nmRow.innerHTML='<span class="ico">🙂</span>'; nmRow.appendChild(nm);
+  const pinRow=document.createElement('div'); pinRow.className='input-icon-row';
   const pin=document.createElement('input'); pin.placeholder='4-digit PIN'; pin.type='password'; pin.maxLength=8;
+  pinRow.innerHTML='<span class="ico">🔑</span>'; pinRow.appendChild(pin);
   const er=document.createElement('div'); er.className='err'; if(msg){er.textContent=msg;er.style.display='block';}
   const b=document.createElement('button'); b.className='btn'; b.style.marginTop='8px'; b.style.width='100%'; b.textContent='sign in →';
   async function go(){
@@ -82,7 +88,7 @@ function loginView(msg){
     }catch(e){ er.textContent=e.message; er.style.display='block'; b.disabled=false; b.textContent='sign in →'; }
   }
   b.onclick=go; pin.addEventListener('keydown',e=>{if(e.key==='Enter')go();});
-  c.append(ph,nm,pin,er,b); root.appendChild(c);
+  c.append(phRow,nmRow,pinRow,er,b); root.appendChild(c);
 
   const adminLink=document.createElement('div'); adminLink.style.cssText='text-align:center;margin-top:14px';
   adminLink.innerHTML='<a href="dashboard.html" style="color:var(--muted);font-size:13px;font-weight:700;text-decoration:none">admin? sign in to the dashboard →</a>';
@@ -109,7 +115,7 @@ function categoryGames(){ return (window.GAMES||[]).filter(g=>g.category===TRAIN
 
 const GAME_ICONS={'match-me':'🎯','colour-flip':'🎨','shape-stitch':'🧵','shape-fusion':'🔷','cue-cards':'✏️','artventure':'🎲','imagine-that':'💭','doodle-dash':'⚡','art-gym-book':'📖'};
 function gameIcon(id){ return GAME_ICONS[id]||'🧩'; }
-const GAME_PHOTOS={'match-me':'images/games/match-me.jpg','colour-flip':'images/games/colour-flip.jpg','shape-stitch':'images/games/shape-stitch.jpg','shape-fusion':'images/games/shape-fusion.jpg','cue-cards':'images/games/cue-cards.jpg','artventure':'images/games/artventure.jpg','doodle-dash':'images/games/doodle-dash.jpg','art-gym-book':'images/games/art-gym-book.jpg'};
+const GAME_PHOTOS={'match-me':'images/games/match-me.jpg','colour-flip':'images/games/colour-flip.jpg','shape-stitch':'images/games/shape-stitch.jpg','shape-fusion':'images/games/shape-fusion.jpg','cue-cards':'images/games/cue-cards.jpg','artventure':'images/games/artventure.jpg','imagine-that':'images/games/imagine-that.jpg','doodle-dash':'images/games/doodle-dash.jpg','art-gym-book':'images/games/art-gym-book.jpg'};
 
 function scoreTotal(s){ return ['age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine'].reduce((n,k)=>n+(s[k]?1:0),0); }
 const CRITERIA_LABELS={age_appropriateness:'age fit',clarity:'clarity',gameplay_accuracy:'gameplay accuracy',challenge_accuracy:'challenge accuracy',genuine:'genuine'};
@@ -168,33 +174,36 @@ async function renderChecklist(){
     root.appendChild(empty);
   }
 
+  const grid=document.createElement('div'); grid.className='game-grid';
   games.forEach(g=>{
     const rec=latest[g.id];
     const count=attempts[g.id]||0;
     const canReattempt=rec && count<MAX_ATTEMPTS_PER_GAME;
-    const item=document.createElement('div'); item.className='checklist-item'+(rec?' done':'');
-    const icon=document.createElement('div'); icon.className='game-icon';
-    if(GAME_PHOTOS[g.id]) icon.innerHTML='<img src="'+GAME_PHOTOS[g.id]+'" alt="" style="width:100%;height:100%;object-fit:cover">';
-    else icon.textContent=gameIcon(g.id);
-    item.appendChild(icon);
-    const dot=document.createElement('div'); dot.className='check-dot '+(rec?'done':'pending');
+    const tile=document.createElement('div'); tile.className='game-tile'+(rec?' done':'');
+    const img=document.createElement('div'); img.className='game-tile-img';
+    if(GAME_PHOTOS[g.id]) img.innerHTML='<img src="'+GAME_PHOTOS[g.id]+'" alt="" style="width:100%;height:100%;object-fit:cover">';
+    else img.innerHTML='<div style="width:100%;height:100%;display:grid;place-items:center;font-size:44px">'+gameIcon(g.id)+'</div>';
+    const dot=document.createElement('div'); dot.className='check-dot game-tile-badge '+(rec?'done':'pending');
     dot.textContent=rec?'✓':'';
-    item.appendChild(dot);
-    const mid=document.createElement('div'); mid.style.flex='1';
-    mid.innerHTML='<div style="font-weight:800;font-size:15px">'+esc(g.name)+'</div>'
+    img.appendChild(dot);
+    tile.appendChild(img);
+    const body=document.createElement('div'); body.className='game-tile-body';
+    body.innerHTML='<div style="font-weight:800;font-size:15px">'+esc(g.name)+'</div>'
       +(rec?'<div class="muted" style="font-size:12.5px">'+scoreTotal(rec.scores)+'/5 · ages '+esc(rec.age_band)+' · attempt '+count+' of '+MAX_ATTEMPTS_PER_GAME+'</div>':'<div class="muted" style="font-size:12.5px">not attempted yet</div>');
-    item.appendChild(mid);
+    tile.appendChild(body);
     if(!rec || canReattempt){
-      const btn=document.createElement('button'); btn.className=rec?'ghost':'btn'; btn.style.flex='none';
+      const btn=document.createElement('button'); btn.className=(rec?'ghost':'btn'); btn.style.cssText='width:100%;margin-top:8px';
       btn.textContent=rec?'re-attempt':'start →';
       btn.onclick=()=>startGame(g);
-      item.appendChild(btn);
+      body.appendChild(btn);
     } else {
-      const done=document.createElement('span'); done.className='pill'; done.style.flex='none'; done.textContent='both attempts used';
-      item.appendChild(done);
+      const done=document.createElement('span'); done.className='pill'; done.style.cssText='display:block;text-align:center;margin-top:8px';
+      done.textContent='both attempts used';
+      body.appendChild(done);
     }
-    root.appendChild(item);
+    grid.appendChild(tile);
   });
+  root.appendChild(grid);
 
   if(doneCount>0 && !TRAINEE.approved){
     const note=document.createElement('div'); note.className='muted'; note.style.cssText='font-size:12.5px;margin-bottom:10px';
