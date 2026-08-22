@@ -397,13 +397,22 @@ async def list_trainees(authorization: Optional[str] = Header(None)):
 
 
 @app.delete("/api/admin/trainees/{phone}")
-async def remove_trainee(phone: str, authorization: Optional[str] = Header(None)):
-    """Removes a trainee's login only — their saved explanation records are
-    left alone so past assessments stay on file for review."""
+async def remove_trainee(phone: str, delete_data: bool = False, authorization: Optional[str] = Header(None)):
+    """Removes a trainee's login. By default their saved explanation records
+    are left alone so past assessments stay on file for review; pass
+    delete_data=true to also permanently erase those records."""
     _check(authorization, {"staff"})
     if not _get_trainee(phone):
         raise HTTPException(404, "trainee not found")
     _redis("HDEL", TRAINEES_KEY, phone)
+    if delete_data:
+        res = _redis("LRANGE", EXPLAIN_LIST_KEY, "0", "999")
+        existing = [json.loads(x) for x in (res.get("result") or [])]
+        kept = [x for x in existing if x.get("trainee_phone") != phone]
+        if len(kept) != len(existing):
+            _redis("DEL", EXPLAIN_LIST_KEY)
+            if kept:
+                _redis("RPUSH", EXPLAIN_LIST_KEY, *[json.dumps(x, ensure_ascii=False) for x in kept])
     return {"ok": True}
 
 

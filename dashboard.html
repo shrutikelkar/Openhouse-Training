@@ -379,15 +379,30 @@ function traineesTab(){
   });
 
   listCard.querySelectorAll('[data-remove-phone]').forEach(btn=>{
-    btn.onclick=async()=>{
+    btn.onclick=()=>{
       const phone=btn.getAttribute('data-remove-phone'), name=btn.getAttribute('data-remove-name');
-      if(!confirm('Remove '+name+'\'s login? Their past checks stay on record — only their sign-in access is removed.')) return;
-      btn.disabled=true; btn.textContent='removing…';
-      try{
-        const r=await fetch(API+'/api/admin/trainees/'+encodeURIComponent(phone),{method:'DELETE',headers:{'Authorization':'Bearer '+localStorage.getItem(TK)}});
-        if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not remove'); }
-        await loadTrainees(); render();
-      }catch(e){ btn.disabled=false; btn.textContent='remove'; alert(e.message); }
+      const overlay=document.createElement('div'); overlay.className='modal-overlay';
+      overlay.innerHTML='<div class="modal-card">'
+        +'<div style="font-weight:800;font-size:17px;margin-bottom:6px">Remove '+esc(name)+'?</div>'
+        +'<div class="muted" style="font-size:13.5px;margin-bottom:16px">Choose what happens to their past checks.</div>'
+        +'<button class="modal-btn modal-btn-teal" id="remove-keep-data">remove and keep data</button>'
+        +'<button class="modal-btn modal-btn-danger" id="remove-delete-data">⚠ remove and delete data</button>'
+        +'<button class="modal-btn modal-btn-neutral" id="remove-cancel">cancel</button>'
+        +'</div>';
+      overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
+      document.body.appendChild(overlay);
+      async function doRemove(deleteData){
+        overlay.remove();
+        btn.disabled=true; btn.textContent='removing…';
+        try{
+          const r=await fetch(API+'/api/admin/trainees/'+encodeURIComponent(phone)+(deleteData?'?delete_data=true':''),{method:'DELETE',headers:{'Authorization':'Bearer '+localStorage.getItem(TK)}});
+          if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not remove'); }
+          await loadTrainees(); render();
+        }catch(e){ btn.disabled=false; btn.textContent='remove'; alert(e.message); }
+      }
+      document.getElementById('remove-keep-data').onclick=()=>doRemove(false);
+      document.getElementById('remove-delete-data').onclick=()=>doRemove(true);
+      document.getElementById('remove-cancel').onclick=()=>overlay.remove();
     };
   });
 }
