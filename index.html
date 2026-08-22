@@ -58,6 +58,7 @@ let recognition=null, listening=false, liveText='', reviewMode=false, originalTr
 function authHeader(){ return {'Authorization':'Bearer '+localStorage.getItem(TK)}; }
 
 function loginView(msg){
+  document.body.classList.add('login-bg');
   root.innerHTML='';
   const hero=document.createElement('div'); hero.className='hero hero-panel';
   hero.innerHTML='<div class="mascot">'+mascotSVG(80)+'</div><div style="font-weight:800;font-size:17px">hi, I\'m Housie 👋</div><div class="muted" style="font-size:13.5px">I\'ll listen to your game explanations and help you get ready</div>';
@@ -149,6 +150,7 @@ async function fetchMyStatus(){
 }
 
 async function renderChecklist(){
+  document.body.classList.remove('login-bg');
   root.innerHTML='<div class="empty">loading…</div>';
   const ok=await fetchMyRecords();
   if(!ok) return;
