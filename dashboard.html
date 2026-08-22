@@ -247,7 +247,7 @@ function traineesTab(){
   const cohLabel=document.createElement('div'); cohLabel.className='muted'; cohLabel.style.cssText='font-size:12px;font-weight:700;margin:2px 0 4px';
   cohLabel.textContent='cohort start date (also sets their PIN — day+month, DDMM)';
   const coh=document.createElement('input'); coh.type='date';
-  const pinPreview=document.createElement('div'); pinPreview.style.cssText='font-size:13px;color:var(--muted);margin:-2px 0 8px;user-select:none';
+  const pinPreview=document.createElement('div'); pinPreview.style.cssText='font-size:20px;font-weight:800;color:var(--coral-dark);margin:2px 0 10px;user-select:none';
   pinPreview.textContent='PIN: —';
   function derivePin(iso){
     if(!iso) return null;
@@ -286,13 +286,14 @@ function traineesTab(){
   if(!TRAINEES.length){
     html+='<div class="empty">No trainees added yet.</div>';
   } else {
-    html+='<div class="table-wrap"><table class="sum-table"><thead><tr><th>Name</th><th>Phone</th><th>Category</th><th>Cohort</th><th>Progress</th><th>Assessment</th></tr></thead><tbody>';
+    html+='<div class="table-wrap"><table class="sum-table"><thead><tr><th>Name</th><th>Phone</th><th>Category</th><th>Cohort</th><th>Progress</th><th>Assessment</th><th></th></tr></thead><tbody>';
     TRAINEES.forEach(t=>{
       const total=categoryGameCount(t.category);
       const done=new Set(ALL.filter(r=>r.trainee_phone===t.phone && r.category===t.category).map(r=>r.game_id)).size;
       html+='<tr><td><b>'+esc(t.name)+'</b></td><td>'+esc(t.phone)+'</td><td>'+esc(t.category)+'</td><td>'+fmtDate(t.cohort)+'</td>'
         +'<td>'+(total?done+' / '+total:'no games yet')+'</td>'
-        +'<td><button class="ghost" data-approve-phone="'+esc(t.phone)+'" data-approve-next="'+(t.approved?'false':'true')+'" style="'+(t.approved?'background:var(--sage-tint);color:var(--sage);border-color:transparent':'')+'">'+(t.approved?'✓ approved':'approve download')+'</button></td></tr>';
+        +'<td><button class="ghost" data-approve-phone="'+esc(t.phone)+'" data-approve-next="'+(t.approved?'false':'true')+'" style="'+(t.approved?'background:var(--sage-tint);color:var(--sage);border-color:transparent':'')+'">'+(t.approved?'✓ approved':'approve download')+'</button></td>'
+        +'<td><button class="ghost" data-remove-phone="'+esc(t.phone)+'" data-remove-name="'+esc(t.name)+'" style="color:var(--stop)">remove</button></td></tr>';
     });
     html+='</tbody></table></div>';
   }
@@ -301,12 +302,27 @@ function traineesTab(){
 
   listCard.querySelectorAll('[data-approve-phone]').forEach(btn=>{
     btn.onclick=async()=>{
+      const orig=btn.textContent;
       btn.disabled=true;
       try{
-        await fetch(API+'/api/admin/trainees/approve',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},{'Authorization':'Bearer '+localStorage.getItem(TK)}),
+        const r=await fetch(API+'/api/admin/trainees/approve',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},{'Authorization':'Bearer '+localStorage.getItem(TK)}),
           body:JSON.stringify({phone:btn.getAttribute('data-approve-phone'), approved:btn.getAttribute('data-approve-next')==='true'})});
+        if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not update'); }
         await loadTrainees(); render();
-      }catch(e){ btn.disabled=false; }
+      }catch(e){ btn.disabled=false; btn.textContent=orig; alert(e.message); }
+    };
+  });
+
+  listCard.querySelectorAll('[data-remove-phone]').forEach(btn=>{
+    btn.onclick=async()=>{
+      const phone=btn.getAttribute('data-remove-phone'), name=btn.getAttribute('data-remove-name');
+      if(!confirm('Remove '+name+'\'s login? Their past checks stay on record — only their sign-in access is removed.')) return;
+      btn.disabled=true; btn.textContent='removing…';
+      try{
+        const r=await fetch(API+'/api/admin/trainees/'+encodeURIComponent(phone),{method:'DELETE',headers:{'Authorization':'Bearer '+localStorage.getItem(TK)}});
+        if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not remove'); }
+        await loadTrainees(); render();
+      }catch(e){ btn.disabled=false; btn.textContent='remove'; alert(e.message); }
     };
   });
 }
@@ -395,11 +411,13 @@ function render(){
 }
 
 async function loadTrainees(){
+  // On failure, leave TRAINEES exactly as it was — a transient error here must
+  // never silently wipe the admin's already-loaded list.
   const t=localStorage.getItem(TK);
   try{
     const r=await fetch(API+'/api/admin/trainees',{headers:{'Authorization':'Bearer '+t}});
-    TRAINEES = r.ok ? await r.json() : [];
-  }catch(e){ TRAINEES=[]; }
+    if(r.ok) TRAINEES=await r.json();
+  }catch(e){}
 }
 
 async function load(){

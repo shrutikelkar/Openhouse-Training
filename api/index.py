@@ -396,6 +396,17 @@ async def list_trainees(authorization: Optional[str] = Header(None)):
     return _list_trainees()
 
 
+@app.delete("/api/admin/trainees/{phone}")
+async def remove_trainee(phone: str, authorization: Optional[str] = Header(None)):
+    """Removes a trainee's login only — their saved explanation records are
+    left alone so past assessments stay on file for review."""
+    _check(authorization, {"staff"})
+    if not _get_trainee(phone):
+        raise HTTPException(404, "trainee not found")
+    _redis("HDEL", TRAINEES_KEY, phone)
+    return {"ok": True}
+
+
 @app.get("/api/admin/categories")
 async def get_categories(authorization: Optional[str] = Header(None)):
     _check(authorization, {"staff"})
