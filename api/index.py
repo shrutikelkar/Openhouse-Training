@@ -1,4 +1,4 @@
-"""Openhouse Game Ready — standalone Vercel serverless API.
+"""Openhouse Playwise — standalone Vercel serverless API.
 
 Fully independent from the Openhouse Quality Observations app: separate
 login, separate data store, separate deploy. Trainees explain art & design
@@ -319,7 +319,7 @@ def _send_welcome_email(to_email: str, trainee: dict, site_url: str) -> bool:
         return False
     body = (
         f"Hi {trainee['name']},\n\n"
-        f"You've been added to Openhouse Game Ready"
+        f"You've been added to Openhouse Playwise"
         f"{' (' + trainee['category'] + ')' if trainee.get('category') else ''}.\n\n"
         f"Sign in here: {site_url}\n"
         f"Phone number: {trainee['phone']}\n"
@@ -327,7 +327,7 @@ def _send_welcome_email(to_email: str, trainee: dict, site_url: str) -> bool:
         "— Housie"
     )
     msg = MIMEText(body)
-    msg["Subject"] = "Your Openhouse Game Ready login"
+    msg["Subject"] = "Your Openhouse Playwise login"
     msg["From"] = SMTP_EMAIL
     msg["To"] = to_email
     try:
@@ -674,7 +674,7 @@ async def my_assessment_docx(authorization: Optional[str] = Header(None)):
     grand = sum(score_total(r.get("scores") or {}) for r in done)
 
     doc = Document()
-    title = doc.add_heading("Game Ready Assessment", level=0)
+    title = doc.add_heading("Playwise Assessment", level=0)
     title.runs[0].font.color.rgb = BRAND_CORAL
 
     sub_p = doc.add_paragraph()
