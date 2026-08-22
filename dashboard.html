@@ -225,6 +225,31 @@ function downloadRecordsCSV(list){
   URL.revokeObjectURL(url);
 }
 
+function downloadScoresCSV(){
+  const names=[...new Set(ALL.map(r=>r.trainee_name).filter(Boolean))].filter(n=>!TRAINEE_FILTER||n===TRAINEE_FILTER).sort();
+  const cols=['trainee_name','category','checks','age_fit_pct','clarity_pct','gameplay_accuracy_pct','challenge_accuracy_pct','genuine_pct','reattempts'];
+  const rows=names.map(name=>{
+    const recs=ALL.filter(r=>r.trainee_name===name);
+    const pct=(key)=>{ const scored=recs.filter(r=>(r.scores||{})[key]!==undefined); return scored.length?Math.round(100*scored.filter(r=>r.scores[key]).length/scored.length):''; };
+    const byGame={}; recs.forEach(r=>{ byGame[r.game_id]=(byGame[r.game_id]||0)+1; });
+    const reattemptCount=Object.values(byGame).filter(n=>n>1).length;
+    const vals={
+      trainee_name:name, category:recs[0].category||'', checks:recs.length,
+      age_fit_pct:pct('age_appropriateness'), clarity_pct:pct('clarity'), gameplay_accuracy_pct:pct('gameplay_accuracy'),
+      challenge_accuracy_pct:pct('challenge_accuracy'), genuine_pct:pct('genuine'), reattempts:reattemptCount
+    };
+    return cols.map(c=>csvEscape(vals[c])).join(',');
+  });
+  const csv=[cols.join(',')].concat(rows).join('\r\n');
+  const blob=new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='playwise-scores-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function responsesTab(){
   const games=[...new Set(ALL.map(r=>r.game_name).filter(Boolean))].sort();
   const categories=[...new Set(ALL.map(r=>r.category).filter(Boolean))].sort();
@@ -390,8 +415,10 @@ function reattemptsView(){
 
 function accuracyTab(){
   const card=document.createElement('div'); card.className='card';
-  let html='<div style="font-weight:800;font-size:16px;margin-bottom:10px">scores by trainee</div>'
-    +'<div class="muted" style="font-size:13px;margin-bottom:12px">every scored criterion, per trainee, across all recorded attempts</div>';
+  let html='<div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:2px">'
+    +'<div style="flex:1;min-width:200px"><div style="font-weight:800;font-size:16px">scores by trainee</div>'
+    +'<div class="muted" style="font-size:13px">every scored criterion, per trainee, across all recorded attempts</div></div>'
+    +'<button class="ghost" id="download-scores-csv">⬇ download CSV</button></div><div style="margin-bottom:10px"></div>';
   const names=[...new Set(ALL.map(r=>r.trainee_name).filter(Boolean))].filter(n=>!TRAINEE_FILTER||n===TRAINEE_FILTER).sort();
   if(!names.length){
     html+='<div class="empty">'+(TRAINEE_FILTER?'No data yet for '+esc(TRAINEE_FILTER)+'.':'No data yet.')+'</div>';
@@ -416,6 +443,8 @@ function accuracyTab(){
   }
   card.innerHTML=html;
   root.appendChild(card);
+  const dlScores=document.getElementById('download-scores-csv');
+  if(dlScores) dlScores.onclick=downloadScoresCSV;
 
   const reCard=document.createElement('div'); reCard.className='card';
   reCard.innerHTML=sect('Re-attempts — before vs after', reattemptsView());
