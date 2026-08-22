@@ -635,6 +635,16 @@ async def explain_save(req: Request, authorization: Optional[str] = Header(None)
     return {"ok": True, "id": rec["id"]}
 
 
+@app.delete("/api/admin/explanations")
+async def clear_all_explanations(authorization: Optional[str] = Header(None)):
+    """Permanently deletes every trainee's saved responses across every
+    category. Trainee logins are untouched — this only clears the Responses
+    data. There is no undo."""
+    _check(authorization, {"staff"})
+    _redis("DEL", EXPLAIN_LIST_KEY)
+    return {"ok": True}
+
+
 @app.get("/api/explanations")
 async def list_explanations(authorization: Optional[str] = Header(None)):
     _check(authorization, {"staff"})
