@@ -384,6 +384,91 @@ function accuracyTab(){
   reCard.innerHTML=sect('Re-attempts — before vs after', reattemptsView());
   root.appendChild(reCard);
 }
+// --- Charts ---
+// Fixed hue order (validated categorical set, adjacent-bar safe both modes) —
+// never reassigned/cycled, so the same criterion is always the same color
+// across the combined chart and every per-game small multiple.
+const CRITERIA_KEYS=['age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine'];
+const CRITERIA_CHART_LABELS={age_appropriateness:'Age fit',clarity:'Clarity',gameplay_accuracy:'Gameplay accuracy',challenge_accuracy:'Challenge accuracy',genuine:'Genuine'};
+const CHART_COLORS={age_appropriateness:'#2a78d6',clarity:'#eb6834',gameplay_accuracy:'#1baf7a',challenge_accuracy:'#eda100',genuine:'#e87ba4'};
+
+function pctFor(list,key){
+  const scored=list.filter(r=>(r.scores||{})[key]!==undefined);
+  return scored.length?Math.round(100*scored.filter(r=>r.scores[key]).length/scored.length):0;
+}
+
+function chartLegend(){
+  let html='<div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px">';
+  CRITERIA_KEYS.forEach(k=>{
+    html+='<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)">'
+      +'<span style="width:12px;height:12px;border-radius:3px;background:'+CHART_COLORS[k]+';display:inline-block;flex:none"></span>'+esc(CRITERIA_CHART_LABELS[k])+'</span>';
+  });
+  html+='</div>';
+  return html;
+}
+
+// Horizontal bar chart, small-multiples-safe: fixed category order/color,
+// gridlines at 0/25/50/75/100, value labelled at the bar tip (text never
+// carries the series color — labels stay in ink/muted tokens).
+function barChartSVG(values,opts){
+  opts=opts||{};
+  const w=opts.width||440, barH=18, gap=12, leftPad=132, rightPad=44, topPad=6;
+  const chartW=w-leftPad-rightPad;
+  const h=topPad*2+values.length*(barH+gap)-gap;
+  let svg='<svg viewBox="0 0 '+w+' '+h+'" width="100%" style="max-width:'+w+'px;display:block;overflow:visible">';
+  [0,25,50,75,100].forEach(p=>{
+    const x=leftPad+chartW*p/100;
+    svg+='<line x1="'+x+'" y1="0" x2="'+x+'" y2="'+h+'" stroke="#e7e0d4" stroke-width="1"/>';
+  });
+  values.forEach((v,i)=>{
+    const y=topPad+i*(barH+gap);
+    const barW=Math.max(2,chartW*v.pct/100);
+    svg+='<text x="'+(leftPad-10)+'" y="'+(y+barH/2+4)+'" text-anchor="end" font-size="11.5px" fill="#6b675f">'+esc(v.label)+'</text>';
+    svg+='<rect x="'+leftPad+'" y="'+y+'" width="'+barW+'" height="'+barH+'" rx="4" fill="'+v.color+'"/>';
+    svg+='<text x="'+(leftPad+barW+8)+'" y="'+(y+barH/2+4)+'" font-size="12px" font-weight="800" fill="#2C2B28">'+v.pct+'%</text>';
+  });
+  svg+='</svg>';
+  return svg;
+}
+
+function chartsTab(){
+  const filteredAll=ALL.filter(r=>!TRAINEE_FILTER||r.trainee_name===TRAINEE_FILTER);
+  const card=document.createElement('div'); card.className='card';
+  let html='<div style="font-weight:800;font-size:16px;margin-bottom:4px">score charts</div>'
+    +'<div class="muted" style="font-size:13px;margin-bottom:14px">pass rate per criterion — combined across all games, and broken down by game'+(TRAINEE_FILTER?' — filtered to '+esc(TRAINEE_FILTER):'')+'</div>'
+    +chartLegend();
+
+  if(!filteredAll.length){
+    html+='<div class="empty">No data yet'+(TRAINEE_FILTER?' for '+esc(TRAINEE_FILTER):'')+'.</div>';
+    card.innerHTML=html;
+    root.appendChild(card);
+    return;
+  }
+
+  const combinedValues=CRITERIA_KEYS.map(k=>({key:k,label:CRITERIA_CHART_LABELS[k],pct:pctFor(filteredAll,k),color:CHART_COLORS[k]}));
+  html+=sect('All games combined — '+filteredAll.length+' checks',barChartSVG(combinedValues,{width:460}));
+  card.innerHTML=html;
+  root.appendChild(card);
+
+  const gameNames={};
+  filteredAll.forEach(r=>{ if(r.game_id) gameNames[r.game_id]=r.game_name||r.game_id; });
+  const gameIds=Object.keys(gameNames).sort((a,b)=>gameNames[a].localeCompare(gameNames[b]));
+  if(gameIds.length){
+    const gridCard=document.createElement('div'); gridCard.className='card';
+    let gh='<div class="section-title" style="margin-bottom:14px">by game</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:22px">';
+    gameIds.forEach(gid=>{
+      const list=filteredAll.filter(r=>r.game_id===gid);
+      const values=CRITERIA_KEYS.map(k=>({key:k,label:CRITERIA_CHART_LABELS[k],pct:pctFor(list,k),color:CHART_COLORS[k]}));
+      gh+='<div><div style="font-weight:800;font-size:13.5px;margin-bottom:8px">'+esc(gameNames[gid])+' <span class="muted" style="font-weight:600;font-size:11.5px">('+list.length+' check'+(list.length!==1?'s':'')+')</span></div>'
+        +barChartSVG(values,{width:340})+'</div>';
+    });
+    gh+='</div>';
+    gridCard.innerHTML=gh;
+    root.appendChild(gridCard);
+  }
+}
+
 function ynBadge(pct){
   if(pct===null||pct===undefined) return '<span class="yn-pct">—</span>';
   const cls=pct>=70?'yn-yes':pct>=40?'yn-no':'yn-no';
@@ -397,7 +482,7 @@ function render(){
   root.innerHTML='';
 
   const tabBar=document.createElement('div'); tabBar.className='tabs';
-  [{id:'responses',label:'Responses'},{id:'trainees',label:'Trainees'},{id:'accuracy',label:'Scores'}].forEach(t=>{
+  [{id:'responses',label:'Responses'},{id:'trainees',label:'Trainees'},{id:'accuracy',label:'Scores'},{id:'charts',label:'Charts'}].forEach(t=>{
     const b=document.createElement('button'); b.className='tab'+(ACTIVE_TAB===t.id?' active':''); b.textContent=t.label;
     b.onclick=()=>{ ACTIVE_TAB=t.id; render(); };
     tabBar.appendChild(b);
@@ -406,6 +491,7 @@ function render(){
 
   if(ACTIVE_TAB==='trainees'){ traineesTab(); return; }
   if(ACTIVE_TAB==='accuracy'){ accuracyTab(); return; }
+  if(ACTIVE_TAB==='charts'){ chartsTab(); return; }
   if(!ALL.length){ root.innerHTML+='<div class="empty">No game explanations recorded yet.</div>'; return; }
   responsesTab();
 }
