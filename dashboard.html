@@ -15,7 +15,6 @@
     </div>
     <div class="sp"></div>
     <select id="trainee-picker" style="display:none;width:auto;margin-bottom:0;max-width:200px"><option value="">All trainees</option></select>
-    <button class="ghost" id="refresh" style="display:none">refresh</button>
     <button class="ghost" id="signout" style="display:none">sign out</button>
   </div>
   <div id="root"></div>
@@ -26,6 +25,12 @@ const TK='oh_explain_token';
 const root=document.getElementById('root');
 const API=(window.location.protocol==='file:'||window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:8000':'';
 let ALL=[], TRAINEES=[], ACTIVE_TAB='responses', GAME_FILTER='', TRAINEE_FILTER='', CATEGORY_FILTER='';
+
+// Safety net: a modal that fails to close for any reason must never be able
+// to block the rest of the page (e.g. the tab bar) — Escape always clears it.
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape') document.querySelectorAll('.modal-overlay').forEach(o=>o.remove());
+});
 
 function syncTraineePicker(){
   const picker=document.getElementById('trainee-picker');
@@ -77,7 +82,6 @@ function diffHighlight(original, text){
 }
 
 function loginView(msg){
-  document.getElementById('refresh').style.display='none';
   document.getElementById('signout').style.display='none';
   document.getElementById('trainee-picker').style.display='none';
   root.innerHTML='';
@@ -263,8 +267,7 @@ function responsesTab(){
     +(categories.length?'<select id="category-select"><option value="">All categories</option>'+categories.map(c=>'<option value="'+esc(c)+'"'+(c===CATEGORY_FILTER?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select>':'')
     +'<select id="game-select"><option value="">All games</option>'+games.map(g=>'<option value="'+esc(g)+'"'+(g===GAME_FILTER?' selected':'')+'>'+esc(g)+'</option>').join('')+'</select>'
     +(TRAINEE_FILTER?'<span class="pill coral">trainee: '+esc(TRAINEE_FILTER)+' <span style="cursor:pointer" id="clear-trainee-filter">✕</span></span>':'')
-    +'<button class="ghost" id="download-csv" style="margin-left:auto">⬇ download CSV</button>'
-    +'<button class="ghost" id="clear-all-responses" style="color:#B3261E;border-color:#B3261E">⚠ clear all responses</button>';
+    +'<button class="ghost" id="download-csv" style="margin-left:auto">⬇ download CSV</button>';
   root.appendChild(filterRow);
 
   const filtered=ALL.filter(r=>(!GAME_FILTER||r.game_name===GAME_FILTER)&&(!TRAINEE_FILTER||r.trainee_name===TRAINEE_FILTER)&&(!CATEGORY_FILTER||r.category===CATEGORY_FILTER));
@@ -297,30 +300,6 @@ function responsesTab(){
   if(ctf) ctf.onclick=()=>{ TRAINEE_FILTER=''; render(); };
   const dl=document.getElementById('download-csv');
   if(dl) dl.onclick=()=>downloadRecordsCSV(filtered);
-  const clearAll=document.getElementById('clear-all-responses');
-  if(clearAll) clearAll.onclick=()=>{
-    const overlay=document.createElement('div'); overlay.className='modal-overlay';
-    const totalCount=ALL.length;
-    overlay.innerHTML='<div class="modal-card">'
-      +'<div style="font-weight:800;font-size:17px;margin-bottom:6px">Clear all '+totalCount+' response'+(totalCount===1?'':'s')+'?</div>'
-      +'<div class="muted" style="font-size:13.5px;margin-bottom:16px">This permanently deletes every trainee\'s saved responses, across every category. Trainee logins are not affected. This cannot be undone.</div>'
-      +'<button class="modal-btn modal-btn-danger" id="clear-all-confirm">⚠ yes, delete all responses</button>'
-      +'<button class="modal-btn modal-btn-neutral" id="clear-all-cancel">cancel</button>'
-      +'</div>';
-    overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
-    document.body.appendChild(overlay);
-    document.getElementById('clear-all-cancel').onclick=()=>overlay.remove();
-    document.getElementById('clear-all-confirm').onclick=async()=>{
-      const confirmBtn=document.getElementById('clear-all-confirm');
-      confirmBtn.disabled=true; confirmBtn.textContent='deleting…';
-      try{
-        const r=await fetch(API+'/api/admin/explanations',{method:'DELETE',headers:{'Authorization':'Bearer '+localStorage.getItem(TK)}});
-        if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not clear responses'); }
-        overlay.remove();
-        await load();
-      }catch(e){ confirmBtn.disabled=false; confirmBtn.textContent='⚠ yes, delete all responses'; alert(e.message); }
-    };
-  };
 }
 
 function categoryGameCount(category){
@@ -670,7 +649,6 @@ function ynBadge(pct){
 }
 
 function render(){
-  document.getElementById('refresh').style.display='inline-block';
   document.getElementById('signout').style.display='inline-block';
   syncTraineePicker();
   root.innerHTML='';
@@ -712,7 +690,6 @@ async function load(){
     render();
   }catch(e){ root.innerHTML='<div class="empty">Could not load — is the server running?</div>'; }
 }
-document.getElementById('refresh').onclick=load;
 document.getElementById('signout').onclick=()=>{localStorage.removeItem(TK);loginView();};
 load();
 </script>
