@@ -222,6 +222,15 @@ function recordsView(list){
     }
     if(r.suggestion) html+='<div class="txt" style="background:var(--coral-tint)"><span class="lab">🎯 suggestion</span>'+esc(r.suggestion)+'</div>';
     if(r.new_idea) html+='<div class="txt" style="background:var(--teal-tint)"><span class="lab">💡 new idea</span>'+esc(r.new_idea)+'</div>';
+    html+='<div class="txt" style="background:var(--subtle)" data-comment-record="'+esc(r.id||'')+'">'
+      +'<span class="lab">📝 admin comment</span>'
+      +'<div class="comment-display">'+(r.admin_comment?esc(r.admin_comment):'<span class="muted">no comment yet</span>')+'</div>'
+      +'<textarea class="comment-input" style="display:none;min-height:60px;margin-top:6px">'+esc(r.admin_comment||'')+'</textarea>'
+      +'<div style="margin-top:6px;display:flex;gap:6px">'
+      +'<button class="ghost comment-edit-btn" style="font-size:12px;padding:5px 11px">'+(r.admin_comment?'✏️ edit':'+ add comment')+'</button>'
+      +'<button class="btn comment-save-btn" style="display:none;font-size:12px;padding:5px 11px">save</button>'
+      +'<button class="ghost comment-cancel-btn" style="display:none;font-size:12px;padding:5px 11px">cancel</button>'
+      +'</div></div>';
     let genuineMatch={len:0, words:[]};
     if(!s.genuine){
       const refTokens=tokenizeWords(referenceTextForGame(r.game_id));
@@ -351,6 +360,31 @@ function responsesTab(){
   if(ctf) ctf.onclick=()=>{ TRAINEE_FILTER=''; render(); };
   const dl=document.getElementById('download-csv');
   if(dl) dl.onclick=()=>downloadRecordsCSV(filtered);
+
+  card.querySelectorAll('[data-comment-record]').forEach(box=>{
+    const recordId=box.getAttribute('data-comment-record');
+    const display=box.querySelector('.comment-display');
+    const input=box.querySelector('.comment-input');
+    const editBtn=box.querySelector('.comment-edit-btn');
+    const saveBtn=box.querySelector('.comment-save-btn');
+    const cancelBtn=box.querySelector('.comment-cancel-btn');
+    editBtn.onclick=()=>{
+      display.style.display='none'; editBtn.style.display='none';
+      input.style.display='block'; saveBtn.style.display='inline-block'; cancelBtn.style.display='inline-block';
+      input.focus();
+    };
+    cancelBtn.onclick=()=>render();
+    saveBtn.onclick=async()=>{
+      saveBtn.disabled=true; saveBtn.textContent='saving…';
+      try{
+        const r=await fetch(API+'/api/admin/explanations/'+encodeURIComponent(recordId)+'/comment',{method:'POST',
+          headers:Object.assign({'Content-Type':'application/json'},{'Authorization':'Bearer '+localStorage.getItem(TK)}),
+          body:JSON.stringify({comment:input.value})});
+        if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not save comment'); }
+        await load();
+      }catch(e){ saveBtn.disabled=false; saveBtn.textContent='save'; alert(e.message); }
+    };
+  });
 }
 
 function categoryGameCount(category){

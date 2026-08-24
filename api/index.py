@@ -707,6 +707,26 @@ async def list_explanations(authorization: Optional[str] = Header(None)):
     return [json.loads(x) for x in rows]
 
 
+def _mutate_explanation_record(record_id: str, mutate) -> dict:
+    """Finds one explanation record by id, applies `mutate` to it in place,
+    and rewrites the whole list back to Redis (there's no per-item update in
+    this REST API, only whole-list ops). Raises 404 if not found."""
+    res = _redis("LRANGE", EXPLAIN_LIST_KEY, "0", "999")
+    rows = res.get("result") or []
+    all_recs = [json.loads(x) for x in rows]
+    found = None
+    for r in all_recs:
+        if r.get("id") == record_id:
+            mutate(r)
+            found = r
+            break
+    if not found:
+        raise HTTPException(404, "record not found")
+    _redis("DEL", EXPLAIN_LIST_KEY)
+    _redis("RPUSH", EXPLAIN_LIST_KEY, *[json.dumps(x, ensure_ascii=False) for x in all_recs])
+    return found
+
+
 @app.post("/api/admin/explanations/{record_id}/feedback")
 async def edit_explanation_feedback(record_id: str, req: Request, authorization: Optional[str] = Header(None)):
     """Lets staff correct the trainee-facing strengths/improvements text before
@@ -714,21 +734,27 @@ async def edit_explanation_feedback(record_id: str, req: Request, authorization:
     their downloaded assessment."""
     _check(authorization, {"staff"})
     b = await req.json()
-    res = _redis("LRANGE", EXPLAIN_LIST_KEY, "0", "999")
-    rows = res.get("result") or []
-    all_recs = [json.loads(x) for x in rows]
-    found = None
-    for r in all_recs:
-        if r.get("id") == record_id:
-            r["strengths"] = b.get("strengths") or ""
-            r["improvements"] = b.get("improvements") or []
-            found = r
-            break
-    if not found:
-        raise HTTPException(404, "record not found")
-    _redis("DEL", EXPLAIN_LIST_KEY)
-    _redis("RPUSH", EXPLAIN_LIST_KEY, *[json.dumps(x, ensure_ascii=False) for x in all_recs])
-    return {"ok": True, "record": found}
+
+    def mutate(r):
+        r["strengths"] = b.get("strengths") or ""
+        r["improvements"] = b.get("improvements") or []
+
+    record = _mutate_explanation_record(record_id, mutate)
+    return {"ok": True, "record": record}
+
+
+@app.post("/api/admin/explanations/{record_id}/comment")
+async def edit_explanation_comment(record_id: str, req: Request, authorization: Optional[str] = Header(None)):
+    """An admin-only internal note on a response — never shown to the trainee
+    and never included in their downloaded assessment."""
+    _check(authorization, {"staff"})
+    b = await req.json()
+
+    def mutate(r):
+        r["admin_comment"] = (b.get("comment") or "").strip()
+
+    record = _mutate_explanation_record(record_id, mutate)
+    return {"ok": True, "record": record}
 
 
 @app.get("/api/my-explanations")
