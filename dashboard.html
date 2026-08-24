@@ -25,6 +25,7 @@ const TK='oh_explain_token';
 const root=document.getElementById('root');
 const API=(window.location.protocol==='file:'||window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:8000':'';
 let ALL=[], TRAINEES=[], ACTIVE_TAB='responses', GAME_FILTER='', TRAINEE_FILTER='', CATEGORY_FILTER='';
+let LAST_BULK_ADD_RESULT=null; // survives the re-render that follows a bulk add, so the summary is actually visible
 
 // Safety net: a modal that fails to close for any reason must never be able
 // to block the rest of the page (e.g. the tab bar) — Escape always clears it.
@@ -350,6 +351,60 @@ function traineesTab(){
   };
   formCard.append(nm,ph,em,cat,cohLabel,coh,pinPreview,er,ok,addBtn);
   root.appendChild(formCard);
+
+  const bulkCard=document.createElement('div'); bulkCard.className='card';
+  bulkCard.innerHTML='<div style="font-weight:800;font-size:16px;margin-bottom:2px">add multiple trainees</div>'
+    +'<div class="muted" style="font-size:13px;margin-bottom:10px">for a whole cohort at once — same category and cohort date, one trainee per line below</div>';
+  const bulkCat=document.createElement('select');
+  ['art-design','public-speaking','robotics','music','chess'].forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; bulkCat.appendChild(o); });
+  const bulkCohLabel=document.createElement('div'); bulkCohLabel.className='muted'; bulkCohLabel.style.cssText='font-size:12px;font-weight:700;margin:2px 0 4px';
+  bulkCohLabel.textContent='cohort start date (also sets everyone\'s PIN — day+month, DDMM)';
+  const bulkCoh=document.createElement('input'); bulkCoh.type='date';
+  const bulkPinPreview=document.createElement('div'); bulkPinPreview.style.cssText='font-size:15px;font-weight:400;font-family:inherit;color:var(--ink);text-align:left;margin:2px 0 10px;user-select:none';
+  bulkPinPreview.textContent='PIN: —';
+  bulkCoh.addEventListener('input',()=>{ const p=derivePin(bulkCoh.value); bulkPinPreview.textContent='PIN: '+(p||'—'); });
+  const bulkLinesLabel=document.createElement('div'); bulkLinesLabel.className='muted'; bulkLinesLabel.style.cssText='font-size:12px;font-weight:700;margin:2px 0 4px';
+  bulkLinesLabel.textContent='one trainee per line: name, phone number, email (optional)';
+  const bulkLines=document.createElement('textarea'); bulkLines.rows=6;
+  bulkLines.placeholder='Priya Sharma, 9876543210\nRavi Kumar, 9876500000, ravi@example.com';
+  const bulkEr=document.createElement('div'); bulkEr.className='err';
+  const bulkResults=document.createElement('div'); bulkResults.style.cssText='font-size:13px;margin-top:6px;display:none';
+  const bulkBtn=document.createElement('button'); bulkBtn.className='btn'; bulkBtn.style.width='100%'; bulkBtn.textContent='add all';
+  bulkBtn.onclick=async()=>{
+    bulkEr.style.display='none'; bulkResults.style.display='none';
+    const rows=bulkLines.value.split('\n').map(l=>l.trim()).filter(Boolean).map(line=>{
+      const parts=line.split(',').map(p=>p.trim());
+      return { name:parts[0]||'', phone:parts[1]||'', email:parts[2]||'' };
+    });
+    if(!bulkCoh.value.trim()){ bulkEr.textContent='cohort start date is required'; bulkEr.style.display='block'; return; }
+    if(!rows.length){ bulkEr.textContent='add at least one trainee line'; bulkEr.style.display='block'; return; }
+    const badRow=rows.find(r=>!r.name||!r.phone);
+    if(badRow){ bulkEr.textContent='every line needs at least a name and a phone number, separated by a comma'; bulkEr.style.display='block'; return; }
+    bulkBtn.disabled=true; bulkBtn.textContent='adding '+rows.length+'…';
+    const outcomes=[];
+    for(const row of rows){
+      try{
+        const r=await fetch(API+'/api/admin/trainees',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},{'Authorization':'Bearer '+localStorage.getItem(TK)}),
+          body:JSON.stringify({name:row.name,phone:row.phone,category:bulkCat.value,cohort:bulkCoh.value.trim(),email:row.email})});
+        const d=await r.json();
+        if(!r.ok) throw new Error(d.detail||'could not add');
+        outcomes.push({name:row.name, phone:row.phone, email:row.email, ok:true, pin:d.trainee.pin});
+      }catch(e){ outcomes.push({name:row.name, phone:row.phone, email:row.email, ok:false, error:e.message}); }
+    }
+    LAST_BULK_ADD_RESULT=outcomes;
+    await loadTrainees(); render();
+  };
+  if(LAST_BULK_ADD_RESULT){
+    const failedLines=LAST_BULK_ADD_RESULT.filter(o=>!o.ok).map(o=>[o.name,o.phone,o.email].filter(Boolean).join(', '));
+    bulkLines.value=failedLines.join('\n');
+    bulkResults.innerHTML=LAST_BULK_ADD_RESULT.map(o=>o.ok
+      ? '<div style="color:var(--sage)">✓ '+esc(o.name)+' — PIN '+esc(o.pin)+'</div>'
+      : '<div style="color:var(--stop)">✗ '+esc(o.name)+' — '+esc(o.error)+'</div>').join('');
+    bulkResults.style.display='block';
+    LAST_BULK_ADD_RESULT=null;
+  }
+  bulkCard.append(bulkCat,bulkCohLabel,bulkCoh,bulkPinPreview,bulkLinesLabel,bulkLines,bulkEr,bulkBtn,bulkResults);
+  root.appendChild(bulkCard);
 
   const listCard=document.createElement('div'); listCard.className='card';
   let html='<div style="font-weight:800;font-size:16px;margin-bottom:10px">trainees — '+TRAINEES.length+'</div>';
