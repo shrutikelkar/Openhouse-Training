@@ -259,6 +259,46 @@ def _gemini_json(system: str, user_message: str) -> dict:
         raise HTTPException(502, f"model did not return valid JSON. Raw text: {text[:800]!r}. Full body: {json.dumps(body)[:800]}")
 
 
+def _gemini_transcribe(audio_b64: str, mime_type: str) -> str:
+    """Speech-to-text via Gemini's audio understanding — used instead of the
+    browser's SpeechRecognition API, which only exists in Chromium browsers.
+    Recording itself uses MediaRecorder (Chrome, Firefox, Safari, Edge all
+    support it), so this is what makes the mic work everywhere."""
+    if not GEMINI_API_KEY:
+        raise HTTPException(500, "no GEMINI_API_KEY configured — add it in the Vercel dashboard")
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+        f"?key={GEMINI_API_KEY}"
+    )
+    prompt = (
+        "Transcribe the spoken audio exactly as spoken, in English. "
+        "Return only the transcript text — no commentary, labels, or quotation marks. "
+        "If nothing intelligible was said, return an empty string."
+    )
+    req = urllib.request.Request(
+        url,
+        data=json.dumps({
+            "contents": [{"role": "user", "parts": [
+                {"text": prompt},
+                {"inline_data": {"mime_type": mime_type, "data": audio_b64}},
+            ]}],
+            "generationConfig": {"maxOutputTokens": 2000},
+        }).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            body = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode(errors="replace")
+        raise HTTPException(502, f"Gemini API error ({e.code}): {detail}")
+    try:
+        return body["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except (KeyError, IndexError):
+        # empty/blocked response (e.g. silence) — treat as "nothing said" rather than an error
+        return ""
+
+
 # ---------- auth ----------
 
 @app.post("/api/login")
@@ -426,6 +466,21 @@ async def get_categories(authorization: Optional[str] = Header(None)):
 
 
 # ---------- explanation quiz ----------
+
+@app.post("/api/explain/transcribe")
+async def explain_transcribe(req: Request, authorization: Optional[str] = Header(None)):
+    """Transcribes a trainee's recorded answer. The browser records audio with
+    MediaRecorder (works everywhere) and uploads it here instead of using
+    SpeechRecognition (Chromium-only) to turn it into text client-side."""
+    _check(authorization, {"trainee"})
+    b = await req.json()
+    audio_b64 = b.get("audio") or ""
+    mime_type = b.get("mime_type") or "audio/webm"
+    if not audio_b64:
+        raise HTTPException(400, "no audio provided")
+    transcript = _gemini_transcribe(audio_b64, mime_type)
+    return {"transcript": transcript}
+
 
 @app.post("/api/explain/turn")
 async def explain_turn(req: Request, authorization: Optional[str] = Header(None)):

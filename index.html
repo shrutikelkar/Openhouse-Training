@@ -53,7 +53,7 @@ document.getElementById('headerMascot').innerHTML=mascotSVG(48);
 let TRAINEE={ name:'', phone:'', category:'', cohort:'', approved:false };
 let MY_RECORDS=[];
 let STATE={ game:null, ageBand:null, history:[], finalResult:null };
-let recognition=null, listening=false, liveText='', reviewMode=false, originalTranscript='';
+let mediaRecorder=null, mediaStream=null, listening=false, liveText='', reviewMode=false, originalTranscript='';
 
 function authHeader(){ return {'Authorization':'Bearer '+localStorage.getItem(TK)}; }
 
@@ -110,7 +110,15 @@ function speak(text){
   });
 }
 
-function micSupported(){ return !!(window.SpeechRecognition||window.webkitSpeechRecognition); }
+function micSupported(){ return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder); }
+function blobToBase64(blob){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onloadend=()=>resolve(String(reader.result).split(',')[1]||'');
+    reader.onerror=reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
 function categoryGames(){ return (window.GAMES||[]).filter(g=>g.category===TRAINEE.category); }
 
@@ -230,7 +238,8 @@ function startGame(game){
   STATE.history=[];
   STATE.finalResult=null;
   reviewMode=false; liveText=''; listening=false;
-  if(recognition){ try{recognition.stop();}catch(e){} }
+  if(mediaRecorder && mediaRecorder.state!=='inactive'){ try{mediaRecorder.stop();}catch(e){} }
+  if(mediaStream){ try{mediaStream.getTracks().forEach(t=>t.stop());}catch(e){} }
   renderIntro();
 }
 
@@ -277,7 +286,7 @@ function renderConversation(waitingForModel){
 
   if(reviewMode){
     const label=document.createElement('div'); label.className='muted'; label.style.cssText='font-size:12px;font-weight:700;margin-top:10px';
-    label.textContent='review & fix the transcript before submitting — speech recognition isn\'t perfect';
+    label.textContent='review & fix the transcript before submitting — automatic transcription isn\'t perfect';
     card.appendChild(label);
     const ta=document.createElement('textarea'); ta.id='reviewBox'; ta.value=liveText.trim();
     ta.style.minHeight='90px';
@@ -303,41 +312,76 @@ function renderConversation(waitingForModel){
   const wrap=document.createElement('div'); wrap.className='center'; wrap.appendChild(mic);
   card.appendChild(wrap);
 
+  const micErr=document.createElement('div'); micErr.className='err center'; micErr.id='micErr';
+  card.appendChild(micErr);
+
   const hint=document.createElement('div'); hint.className='muted center'; hint.style.fontSize='12px';
   hint.textContent='tap to speak, tap again when done — you\'ll get a chance to review the text first';
   card.appendChild(hint);
 
   root.appendChild(card);
+  if(!micSupported()){
+    micErr.textContent='voice recording isn\'t supported in this browser — try Chrome or Edge instead.';
+    micErr.style.display='block';
+    mic.disabled=true;
+  }
 }
 
-function toggleListening(){
+const MIC_ERROR_MESSAGES={
+  'not-allowed':'microphone access was denied — allow microphone access for this site in your browser settings and try again.',
+  'permission-denied':'microphone access was denied — allow microphone access for this site in your browser settings and try again.',
+  'no-speech':'didn\'t catch anything — tap the mic and try again.',
+  'audio-capture':'no microphone was found — check that one is connected and try again.',
+  'network':'a network issue interrupted voice recording — check your connection and try again.'
+};
+function showMicError(key, customMessage){
+  const m=document.getElementById('micErr');
+  if(m){ m.textContent=customMessage||MIC_ERROR_MESSAGES[key]||'something went wrong with voice recording — try again.'; m.style.display='block'; }
+}
+async function toggleListening(){
   if(listening){ stopListening(); return; }
-  const Rec=window.SpeechRecognition||window.webkitSpeechRecognition;
-  recognition=new Rec();
-  recognition.continuous=true; recognition.interimResults=true; recognition.lang='en-IN';
-  liveText='';
-  recognition.onresult=(e)=>{
-    let interim='', final='';
-    for(let i=e.resultIndex;i<e.results.length;i++){
-      const t=e.results[i][0].transcript;
-      if(e.results[i].isFinal) final+=t+' '; else interim+=t;
-    }
-    if(final) liveText+=final;
-    const lt=document.getElementById('liveText');
-    if(lt) lt.textContent=liveText+interim;
-  };
-  recognition.onerror=()=>{ stopListening(); };
-  recognition.onend=()=>{
+  if(!micSupported()) return;
+  const micErr=document.getElementById('micErr'); if(micErr) micErr.style.display='none';
+  try{
+    mediaStream=await navigator.mediaDevices.getUserMedia({audio:true});
+  }catch(e){
+    showMicError(e.name==='NotAllowedError'||e.name==='PermissionDeniedError'?'not-allowed':'audio-capture');
+    return;
+  }
+  const audioChunks=[];
+  const mimeType=['audio/webm','audio/mp4','audio/ogg'].find(t=>window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
+  mediaRecorder=mimeType?new MediaRecorder(mediaStream,{mimeType}):new MediaRecorder(mediaStream);
+  mediaRecorder.ondataavailable=(e)=>{ if(e.data && e.data.size>0) audioChunks.push(e.data); };
+  mediaRecorder.onstop=async()=>{
+    mediaStream.getTracks().forEach(t=>t.stop());
     listening=false;
-    if(liveText.trim()){ originalTranscript=liveText.trim(); reviewMode=true; renderConversation(); }
-    else { const m=document.getElementById('micBtn'); if(m) m.classList.remove('listening'); }
+    const m=document.getElementById('micBtn'); if(m) m.classList.remove('listening');
+    const blob=new Blob(audioChunks,{type:mediaRecorder.mimeType||'audio/webm'});
+    if(blob.size<400){ showMicError('no-speech'); return; }
+    const lt=document.getElementById('liveText'); if(lt) lt.textContent='transcribing…';
+    try{
+      const b64=await blobToBase64(blob);
+      const r=await fetch(API+'/api/explain/transcribe',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},authHeader()),
+        body:JSON.stringify({audio:b64, mime_type:blob.type})});
+      const d=await r.json();
+      if(!r.ok) throw new Error(d.detail||'could not transcribe');
+      const text=(d.transcript||'').trim();
+      if(lt) lt.textContent='';
+      if(text){ liveText=text; originalTranscript=text; reviewMode=true; renderConversation(); }
+      else showMicError('no-speech');
+    }catch(e){
+      if(lt) lt.textContent='';
+      showMicError(null, 'could not transcribe your answer — check your connection and try again.');
+    }
   };
-  recognition.start();
+  mediaRecorder.start();
   listening=true;
+  liveText='';
+  const lt=document.getElementById('liveText'); if(lt) lt.textContent='🔴 listening… tap the mic again when you\'re done';
   const m=document.getElementById('micBtn'); if(m) m.classList.add('listening');
 }
 function stopListening(){
-  if(recognition){ try{recognition.stop();}catch(e){} }
+  if(mediaRecorder && mediaRecorder.state!=='inactive'){ try{mediaRecorder.stop();}catch(e){} }
   listening=false;
 }
 
