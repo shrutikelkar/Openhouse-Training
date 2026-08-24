@@ -399,6 +399,7 @@ async function toggleListening(){
       if(text){ liveText=text; originalTranscript=text; reviewMode=true; renderConversation(); }
       else showMicError('no-speech');
     }catch(e){
+      console.error('transcribe failed:', e);
       if(lt) lt.textContent='';
       showMicError(null, 'could not transcribe your answer — check your connection and try again.');
     }
@@ -428,7 +429,8 @@ async function submitAnswer(rawText, original){
     if(r.status===401){ localStorage.removeItem(TK); loginView('Session expired — sign in again.'); return; }
     const d=await r.json();
     if(!r.ok){
-      STATE.history.push({role:'ai', text:'⚠ server error: '+(d.detail||('HTTP '+r.status))});
+      console.error('explain/turn failed:', d.detail||('HTTP '+r.status));
+      STATE.history.push({role:'ai', text:'Sorry, something went wrong scoring that — tap the mic and try again.'});
       renderConversation();
       return;
     }
@@ -441,6 +443,7 @@ async function submitAnswer(rawText, original){
       await speak(d.question||'');
     }
   }catch(e){
+    console.error('explain/turn network error:', e);
     STATE.history.push({role:'ai', text:'(connection error — could not reach the scoring service)'});
     renderConversation();
   }

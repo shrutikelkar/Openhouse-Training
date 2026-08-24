@@ -232,7 +232,7 @@ def _gemini_json(system: str, user_message: str) -> dict:
             "system_instruction": {"parts": [{"text": system}]},
             "contents": [{"role": "user", "parts": [{"text": user_message}]}],
             "generationConfig": {
-                "maxOutputTokens": 4000,
+                "maxOutputTokens": 8000,
                 "responseMimeType": "application/json",
             },
         }).encode(),
