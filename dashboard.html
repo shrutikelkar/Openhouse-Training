@@ -122,6 +122,47 @@ function highlightGenuineMatch(displayText, matchWords){
   return esc(displayText.slice(0,idx))+'<mark class="genuine-mark">'+esc(matched)+'</mark>'+esc(displayText.slice(idx+matched.length));
 }
 
+// Combines diffHighlight (edit marks) and highlightGenuineMatch (plagiarism marks)
+// on the same turn: does the word-level LCS diff, then locates the genuine-match
+// word-run inside the resulting word array, and marks each word for whichever
+// (or both) apply — so an edited word that's also part of the flagged phrase gets
+// both cues at once instead of only one winning.
+function combinedHighlight(original, text, matchWords){
+  const a=original.trim().split(/\s+/), b=text.trim().split(/\s+/);
+  const m=a.length, n=b.length;
+  const dp=Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  for(let i=m-1;i>=0;i--) for(let j=n-1;j>=0;j--)
+    dp[i][j] = a[i]===b[j] ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j],dp[i][j+1]);
+  let i=0,j=0, words=[];
+  while(i<m && j<n){
+    if(a[i]===b[j]){ words.push({w:b[j], changed:false}); i++; j++; }
+    else if(dp[i+1][j]>=dp[i][j+1]) i++;
+    else { words.push({w:b[j], changed:true}); j++; }
+  }
+  while(j<n){ words.push({w:b[j], changed:true}); j++; }
+
+  let matchStart=-1, matchEnd=-1;
+  if(matchWords && matchWords.length){
+    const norm=words.map(o=>tokenizeWords(o.w).join(' '));
+    const target=matchWords.join(' ');
+    for(let s=0;s<norm.length && matchStart===-1;s++){
+      if(!norm[s]) continue;
+      let acc='';
+      for(let e=s;e<norm.length;e++){
+        if(norm[e]) acc = acc ? acc+' '+norm[e] : norm[e];
+        if(acc===target){ matchStart=s; matchEnd=e; break; }
+        if(acc.length>target.length) break;
+      }
+    }
+  }
+
+  return words.map((o,idx)=>{
+    const inMatch = matchStart!==-1 && idx>=matchStart && idx<=matchEnd;
+    const cls = o.changed && inMatch ? 'edit-genuine-mark' : o.changed ? 'edit-mark' : inMatch ? 'genuine-mark' : '';
+    return cls ? '<mark class="'+cls+'">'+esc(o.w)+'</mark>' : esc(o.w);
+  }).join(' ');
+}
+
 function loginView(msg){
   document.getElementById('signout').style.display='none';
   document.getElementById('trainee-picker').style.display='none';
@@ -243,7 +284,7 @@ function recordsView(list){
     (r.history||[]).forEach(turn=>{
       const who=turn.role==='trainee'?(r.trainee_name||'trainee'):'Housie';
       let body;
-      if(turn.role==='trainee' && turn.original) body=diffHighlight(turn.original, turn.text||'');
+      if(turn.role==='trainee' && turn.original) body=combinedHighlight(turn.original, turn.text||'', genuineMatch.words);
       else if(turn.role==='trainee' && genuineMatch.len) body=highlightGenuineMatch(turn.text||'', genuineMatch.words);
       else body=esc(turn.text||'');
       html+='<div class="txt"><span class="lab">'+esc(who)+(turn.original?' <span style="font-weight:600;text-transform:none;color:var(--muted)">(edited — highlighted)</span>':'')+'</span>'+body+'</div>';
