@@ -82,6 +82,46 @@ function diffHighlight(original, text){
   return out.join(' ');
 }
 
+// Mirrors the backend's _genuineness_signal — same tokenizer and longest-common-run
+// algorithm — so what's highlighted here is exactly the evidence Housie was given
+// when it scored genuine=0, not a separate guess.
+function tokenizeWords(text){ return (text||'').toLowerCase().match(/[a-z0-9]+/g)||[]; }
+function longestCommonRun(a,b){
+  if(!a.length||!b.length) return {len:0, words:[]};
+  const m=a.length, n=b.length;
+  const dp=Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  let bestLen=0, bestEnd=0;
+  for(let i=1;i<=m;i++){
+    for(let j=1;j<=n;j++){
+      if(a[i-1]===b[j-1]){
+        dp[i][j]=dp[i-1][j-1]+1;
+        if(dp[i][j]>bestLen){ bestLen=dp[i][j]; bestEnd=i; }
+      }
+    }
+  }
+  return { len:bestLen, words: bestLen ? a.slice(bestEnd-bestLen,bestEnd) : [] };
+}
+function referenceTextForGame(gameId){
+  const g=(window.GAMES||[]).find(x=>x.id===gameId);
+  if(!g) return '';
+  return [
+    g.goal||'', (g.steps||[]).join(' '), g.easier||'', g.harder||'', g.ends_when||'',
+    Object.values(g.difficulty_levels||{}).join(' '),
+    (g.variations||[]).map(v=>v.text||'').join(' ')
+  ].filter(Boolean).join(' ');
+}
+// highlights the first occurrence of the matched word-run inside this turn's
+// original-cased text; a run spanning two turns just won't be found here and
+// is left unhighlighted rather than guessed at
+function highlightGenuineMatch(displayText, matchWords){
+  if(!matchWords.length) return esc(displayText);
+  const pattern=matchWords.map(w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('[^a-zA-Z0-9]+');
+  const m=displayText.match(new RegExp(pattern,'i'));
+  if(!m) return esc(displayText);
+  const idx=m.index, matched=m[0];
+  return esc(displayText.slice(0,idx))+'<mark class="genuine-mark">'+esc(matched)+'</mark>'+esc(displayText.slice(idx+matched.length));
+}
+
 function loginView(msg){
   document.getElementById('signout').style.display='none';
   document.getElementById('trainee-picker').style.display='none';
@@ -182,11 +222,21 @@ function recordsView(list){
     }
     if(r.suggestion) html+='<div class="txt" style="background:var(--coral-tint)"><span class="lab">🎯 suggestion</span>'+esc(r.suggestion)+'</div>';
     if(r.new_idea) html+='<div class="txt" style="background:var(--teal-tint)"><span class="lab">💡 new idea</span>'+esc(r.new_idea)+'</div>';
+    let genuineMatch={len:0, words:[]};
+    if(!s.genuine){
+      const refTokens=tokenizeWords(referenceTextForGame(r.game_id));
+      const traineeTokens=tokenizeWords((r.history||[]).filter(h=>h.role==='trainee').map(h=>h.text||'').join(' '));
+      genuineMatch=longestCommonRun(traineeTokens, refTokens);
+      if(genuineMatch.len) html+='<div class="txt" style="background:#FADBD8"><span class="lab" style="color:#B3261E">🔴 flagged as not genuine</span>matched '+genuineMatch.len+' words in a row from the reference material — highlighted below in the transcript.</div>';
+    }
     html+='<button class="ghost" style="margin-top:4px" onclick="const t=document.getElementById(\''+uid+'\');t.style.display=t.style.display===\'none\'?\'block\':\'none\'">view transcript</button>';
     html+='<div id="'+uid+'" style="display:none;margin-top:10px">';
     (r.history||[]).forEach(turn=>{
       const who=turn.role==='trainee'?(r.trainee_name||'trainee'):'Housie';
-      const body=(turn.role==='trainee' && turn.original) ? diffHighlight(turn.original, turn.text||'') : esc(turn.text||'');
+      let body;
+      if(turn.role==='trainee' && turn.original) body=diffHighlight(turn.original, turn.text||'');
+      else if(turn.role==='trainee' && genuineMatch.len) body=highlightGenuineMatch(turn.text||'', genuineMatch.words);
+      else body=esc(turn.text||'');
       html+='<div class="txt"><span class="lab">'+esc(who)+(turn.original?' <span style="font-weight:600;text-transform:none;color:var(--muted)">(edited — highlighted)</span>':'')+'</span>'+body+'</div>';
     });
     html+='</div>';

@@ -93,6 +93,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--coral)}
 .stat .n{font-size:25px;font-weight:800;color:var(--coral-dark)}
 .stat .l{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
 .edit-mark{background:#FDE9C8;color:#8a5a00;border-radius:4px;padding:0 3px;font-weight:700}
+.genuine-mark{background:#FADBD8;color:#B3261E;border-radius:4px;padding:0 3px;font-weight:700}
 .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .sum-table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:420px}
 .sum-table th{text-align:left;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;
