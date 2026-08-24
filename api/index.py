@@ -475,7 +475,7 @@ async def explain_transcribe(req: Request, authorization: Optional[str] = Header
     _check(authorization, {"trainee"})
     b = await req.json()
     audio_b64 = b.get("audio") or ""
-    mime_type = b.get("mime_type") or "audio/webm"
+    mime_type = b.get("mime_type") or "audio/wav"
     if not audio_b64:
         raise HTTPException(400, "no audio provided")
     transcript = _gemini_transcribe(audio_b64, mime_type)
