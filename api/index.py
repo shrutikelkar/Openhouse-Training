@@ -41,6 +41,7 @@ import base64
 import hashlib
 import urllib.request
 import urllib.error
+import urllib.parse
 import io
 import smtplib
 from email.mime.text import MIMEText
@@ -61,6 +62,13 @@ REDIS_URL = os.environ.get("KV_REST_API_URL") or os.environ.get("UPSTASH_REDIS_R
 REDIS_TOKEN = os.environ.get("KV_REST_API_TOKEN") or os.environ.get("UPSTASH_REDIS_REST_TOKEN")
 EXPLAIN_LIST_KEY = "explanations"
 TRAINEES_KEY = "trainees"  # redis hash: phone -> json trainee record
+
+BLOB_TOKEN = os.environ.get("BLOB_READ_WRITE_TOKEN")
+BLOB_API_BASE = "https://blob.vercel-storage.com"
+BLOB_API_VERSION = "10"
+ARTWORK_AGE_BANDS = ["5-8", "8-12"]
+ARTWORK_UNITS = 10
+ARTWORK_MAX_BYTES = 8 * 1024 * 1024  # 8MB per file
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
@@ -118,6 +126,52 @@ def _redis(*cmd):
     )
     with urllib.request.urlopen(req, timeout=10) as r:
         return json.loads(r.read())
+
+
+def _blob_put(pathname: str, data: bytes, content_type: str) -> dict:
+    """Uploads bytes to Vercel Blob via its raw REST API — there's no official
+    Python SDK, only JS/TS, so this talks to blob.vercel-storage.com directly.
+    allow-overwrite is always on since each (trainee, age band, unit) slot maps
+    to one fixed pathname and a re-upload is meant to replace, not duplicate."""
+    if not BLOB_TOKEN:
+        raise HTTPException(500, "no blob storage configured — add BLOB_READ_WRITE_TOKEN")
+    url = f"{BLOB_API_BASE}/?pathname={urllib.parse.quote(pathname)}"
+    req = urllib.request.Request(
+        url, data=data, method="PUT",
+        headers={
+            "authorization": f"Bearer {BLOB_TOKEN}",
+            "x-api-version": BLOB_API_VERSION,
+            "x-content-type": content_type,
+            "access": "public",
+            "x-add-random-suffix": "0",
+            "x-allow-overwrite": "1",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=25) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        raise HTTPException(502, f"blob upload failed: {e.read().decode(errors='replace')}")
+
+
+def _blob_delete(urls: list):
+    if not BLOB_TOKEN or not urls:
+        return
+    req = urllib.request.Request(
+        f"{BLOB_API_BASE}/delete",
+        data=json.dumps({"urls": urls}).encode(),
+        method="POST",
+        headers={
+            "authorization": f"Bearer {BLOB_TOKEN}",
+            "x-api-version": BLOB_API_VERSION,
+            "content-type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            r.read()
+    except urllib.error.HTTPError:
+        pass  # best-effort — a stale blob left behind isn't worth failing the request over
 
 
 def _get_trainee(phone: str) -> Optional[dict]:
@@ -463,6 +517,97 @@ async def remove_trainee(phone: str, delete_data: bool = False, authorization: O
 async def get_categories(authorization: Optional[str] = Header(None)):
     _check(authorization, {"staff"})
     return CATEGORIES
+
+
+# ---------- artwork uploads ----------
+
+@app.post("/api/artwork/upload")
+async def artwork_upload(req: Request, authorization: Optional[str] = Header(None)):
+    """Uploads/replaces one artwork slot (a given age band + unit number) for
+    the signed-in trainee. Body: {age_band, unit, file (base64), filename,
+    content_type}. The pathname is fixed per slot so re-uploading replaces the
+    previous file instead of accumulating duplicates in the blob store."""
+    role, phone = _check(authorization, {"trainee"})
+    b = await req.json()
+    age_band = (b.get("age_band") or "").strip()
+    filename = (b.get("filename") or "upload").strip()
+    content_type = (b.get("content_type") or "application/octet-stream").strip()
+    file_b64 = b.get("file") or ""
+    if age_band not in ARTWORK_AGE_BANDS:
+        raise HTTPException(400, f"age_band must be one of {ARTWORK_AGE_BANDS}")
+    try:
+        unit = int(b.get("unit"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "unit must be a number")
+    if not (1 <= unit <= ARTWORK_UNITS):
+        raise HTTPException(400, f"unit must be between 1 and {ARTWORK_UNITS}")
+    if not file_b64:
+        raise HTTPException(400, "no file provided")
+    try:
+        data = base64.b64decode(file_b64)
+    except Exception:
+        raise HTTPException(400, "invalid file data")
+    if len(data) > ARTWORK_MAX_BYTES:
+        raise HTTPException(400, "file too large (max 8MB)")
+
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+
+    ext = os.path.splitext(filename)[1][:10]
+    pathname = f"artwork/{phone}/{age_band}/unit-{unit}{ext}"
+    result = _blob_put(pathname, data, content_type)
+
+    artwork = trainee.get("artwork") or {}
+    band_entry = artwork.get(age_band) or {}
+    band_entry[str(unit)] = {
+        "url": result.get("url"),
+        "filename": filename,
+        "content_type": content_type,
+        "uploaded_at": time.strftime("%Y-%m-%d %H:%M"),
+    }
+    artwork[age_band] = band_entry
+    trainee["artwork"] = artwork
+    _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
+    return {"ok": True, "artwork": artwork}
+
+
+@app.get("/api/artwork/mine")
+async def artwork_mine(authorization: Optional[str] = Header(None)):
+    role, phone = _check(authorization, {"trainee"})
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+    return {"artwork": trainee.get("artwork") or {}}
+
+
+@app.delete("/api/artwork/{age_band}/{unit}")
+async def artwork_delete(age_band: str, unit: int, authorization: Optional[str] = Header(None)):
+    role, phone = _check(authorization, {"trainee"})
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+    artwork = trainee.get("artwork") or {}
+    band_entry = artwork.get(age_band) or {}
+    entry = band_entry.pop(str(unit), None)
+    if entry and entry.get("url"):
+        _blob_delete([entry["url"]])
+    artwork[age_band] = band_entry
+    trainee["artwork"] = artwork
+    _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
+    return {"ok": True, "artwork": artwork}
+
+
+@app.get("/api/admin/artwork")
+async def admin_artwork(authorization: Optional[str] = Header(None)):
+    """Every trainee who has uploaded at least one piece of artwork, for the
+    dashboard's artwork view."""
+    _check(authorization, {"staff"})
+    trainees = _list_trainees()
+    return [
+        {"phone": t.get("phone"), "name": t.get("name"), "category": t.get("category"), "artwork": t.get("artwork") or {}}
+        for t in trainees if t.get("artwork")
+    ]
 
 
 # ---------- explanation quiz ----------

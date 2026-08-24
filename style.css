@@ -121,6 +121,16 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--coral)}
 .check-dot.done{background:var(--sage);color:#fff}
 .check-dot.pending{background:#fff;color:var(--line);border:1.5px dashed var(--line)}
 .game-tile-badge{position:absolute;top:8px;right:8px;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.tab-bar{display:flex;gap:8px;margin:12px 0 16px}
+.tab-btn{flex:1;padding:10px 14px;border-radius:12px;border:1.5px solid var(--line);background:#fff;
+  font-family:inherit;font-weight:800;font-size:13.5px;cursor:pointer;color:var(--muted)}
+.tab-btn.active{background:var(--coral);border-color:var(--coral);color:#fff}
+.artwork-band-title{font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--teal);margin:18px 0 10px}
+.artwork-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px}
+.artwork-slot{border:1.5px solid var(--line);border-radius:14px;background:#fff;padding:9px;text-align:center;box-shadow:var(--shadow)}
+.artwork-slot.filled{border-color:#cfe4c4}
+.artwork-slot-thumb{width:100%;aspect-ratio:1/1;border-radius:10px;background:var(--subtle);display:grid;place-items:center;overflow:hidden;margin-bottom:6px;font-size:26px}
+.artwork-slot-thumb img{width:100%;height:100%;object-fit:cover}
 .progress-ring-wrap{position:relative;width:64px;height:64px;flex:none}
 .progress-ring-wrap svg{transform:rotate(-90deg)}
 .progress-ring-wrap .pct{position:absolute;inset:0;display:grid;place-items:center;font-size:13px;font-weight:800;color:var(--coral-dark)}

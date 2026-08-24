@@ -828,13 +828,50 @@ function ynBadge(pct){
   return '<span class="'+cls+'">'+pct+'%</span>';
 }
 
+async function artworkTab(){
+  const t=localStorage.getItem(TK);
+  const loading=document.createElement('div'); loading.className='empty'; loading.textContent='loading artwork…';
+  root.appendChild(loading);
+  let data=[];
+  try{
+    const r=await fetch(API+'/api/admin/artwork',{headers:{'Authorization':'Bearer '+t}});
+    data = r.ok ? await r.json() : [];
+  }catch(e){}
+  loading.remove();
+  if(ACTIVE_TAB!=='artwork') return; // admin switched tabs while this was loading
+  if(!data.length){
+    const empty=document.createElement('div'); empty.className='empty'; empty.textContent='No artwork uploaded yet.';
+    root.appendChild(empty);
+    return;
+  }
+  data.forEach(entry=>{
+    const card=document.createElement('div'); card.className='card';
+    let html='<div style="font-weight:800;font-size:15px">'+esc(entry.name||entry.phone||'')+'</div>'
+      +'<div class="muted" style="font-size:12.5px;margin-bottom:10px">'+esc(entry.phone||'')+(entry.category?' · '+esc(entry.category):'')+'</div>';
+    ['5-8','8-12'].forEach(band=>{
+      const units=(entry.artwork||{})[band]||{};
+      const keys=Object.keys(units);
+      if(!keys.length) return;
+      html+='<div class="section-title" style="margin-top:8px">ages '+band.replace('-','–')+'</div>'
+        +'<div style="display:flex;flex-wrap:wrap;gap:8px">';
+      keys.sort((a,b)=>(+a)-(+b)).forEach(u=>{
+        const f=units[u]||{};
+        html+='<a href="'+esc(f.url||'#')+'" target="_blank" rel="noopener" class="pill" style="text-decoration:none">unit '+esc(u)+' — '+esc(f.filename||'file')+'</a>';
+      });
+      html+='</div>';
+    });
+    card.innerHTML=html;
+    root.appendChild(card);
+  });
+}
+
 function render(){
   document.getElementById('signout').style.display='inline-block';
   syncTraineePicker();
   root.innerHTML='';
 
   const tabBar=document.createElement('div'); tabBar.className='tabs';
-  [{id:'responses',label:'Responses'},{id:'trainees',label:'Trainees'},{id:'accuracy',label:'Scores'},{id:'charts',label:'Charts'}].forEach(t=>{
+  [{id:'responses',label:'Responses'},{id:'trainees',label:'Trainees'},{id:'artwork',label:'Artwork'},{id:'accuracy',label:'Scores'},{id:'charts',label:'Charts'}].forEach(t=>{
     const b=document.createElement('button'); b.className='tab'+(ACTIVE_TAB===t.id?' active':''); b.textContent=t.label;
     b.onclick=()=>{ ACTIVE_TAB=t.id; render(); };
     tabBar.appendChild(b);
@@ -842,6 +879,7 @@ function render(){
   root.appendChild(tabBar);
 
   if(ACTIVE_TAB==='trainees'){ traineesTab(); return; }
+  if(ACTIVE_TAB==='artwork'){ artworkTab(); return; }
   if(ACTIVE_TAB==='accuracy'){ accuracyTab(); return; }
   if(ACTIVE_TAB==='charts'){ chartsTab(); return; }
   if(!ALL.length){
