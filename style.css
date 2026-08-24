@@ -126,7 +126,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--coral)}
 .tab-btn{flex:1;padding:10px 14px;border-radius:12px;border:1.5px solid var(--line);background:#fff;
   font-family:inherit;font-weight:800;font-size:13.5px;cursor:pointer;color:var(--muted)}
 .tab-btn.active{background:var(--coral);border-color:var(--coral);color:#fff}
-.artwork-band-title{font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--teal);margin:18px 0 10px}
+.artwork-band-title{font-weight:800;font-size:17px;letter-spacing:.02em;text-transform:uppercase;color:var(--teal);margin:18px 0 10px}
 .artwork-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
 @media (max-width:560px){.artwork-grid{grid-template-columns:repeat(2,1fr)}}
 .artwork-slot{border:1.5px solid var(--line);border-radius:14px;background:#fff;padding:9px;text-align:center;box-shadow:var(--shadow)}

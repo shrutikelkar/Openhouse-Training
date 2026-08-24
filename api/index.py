@@ -543,6 +543,8 @@ async def artwork_upload(req: Request, authorization: Optional[str] = Header(Non
         raise HTTPException(400, f"unit must be between 1 and {ARTWORK_UNITS}")
     if not file_b64:
         raise HTTPException(400, "no file provided")
+    if content_type not in ("image/jpeg", "image/png", "application/pdf"):
+        raise HTTPException(400, "file must be JPG, PNG or PDF")
     try:
         data = base64.b64decode(file_b64)
     except Exception:
