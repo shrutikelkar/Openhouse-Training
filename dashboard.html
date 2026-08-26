@@ -25,6 +25,8 @@ const TK='oh_explain_token';
 const root=document.getElementById('root');
 const API=(window.location.protocol==='file:'||window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:8000':'';
 let ALL=[], TRAINEES=[], ACTIVE_TAB='responses', GAME_FILTER='', TRAINEE_FILTER='', CATEGORY_FILTER='';
+const ARTWORK_AGE_BANDS=['5-8','8-12'];
+const ARTWORK_UNITS=10;
 let LAST_BULK_ADD_RESULT=null; // survives the re-render that follows a bulk add, so the summary is actually visible
 
 // Safety net: a modal that fails to close for any reason must never be able
@@ -839,30 +841,58 @@ async function artworkTab(){
   }catch(e){}
   loading.remove();
   if(ACTIVE_TAB!=='artwork') return; // admin switched tabs while this was loading
-  if(!data.length){
-    const empty=document.createElement('div'); empty.className='empty'; empty.textContent='No artwork uploaded yet.';
+
+  const byPhone={};
+  data.forEach(entry=>{ byPhone[entry.phone]=entry; });
+
+  const categories=[...new Set(TRAINEES.map(tr=>tr.category).filter(Boolean))].sort();
+  const filterRow=document.createElement('div'); filterRow.style.cssText='display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center';
+  if(categories.length){
+    const sel=document.createElement('select'); sel.id='artwork-category-select'; sel.style.cssText='width:auto;margin-bottom:0;max-width:220px';
+    sel.innerHTML='<option value="">All categories</option>'+categories.map(c=>'<option value="'+esc(c)+'"'+(c===CATEGORY_FILTER?' selected':'')+'>'+esc(c)+'</option>').join('');
+    sel.onchange=()=>{ CATEGORY_FILTER=sel.value; render(); };
+    filterRow.appendChild(sel);
+  }
+  if(TRAINEE_FILTER){
+    const pill=document.createElement('span'); pill.className='pill coral';
+    pill.innerHTML='trainee: '+esc(TRAINEE_FILTER)+' <span style="cursor:pointer" id="clear-artwork-trainee">✕</span>';
+    filterRow.appendChild(pill);
+  }
+  root.appendChild(filterRow);
+  const clearBtn=document.getElementById('clear-artwork-trainee');
+  if(clearBtn) clearBtn.onclick=()=>{ TRAINEE_FILTER=''; render(); };
+
+  const rows=TRAINEES
+    .filter(tr=>!CATEGORY_FILTER||tr.category===CATEGORY_FILTER)
+    .filter(tr=>!TRAINEE_FILTER||tr.name===TRAINEE_FILTER)
+    .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+
+  if(!rows.length){
+    const empty=document.createElement('div'); empty.className='empty'; empty.textContent='No trainees match this filter.';
     root.appendChild(empty);
     return;
   }
-  data.forEach(entry=>{
-    const card=document.createElement('div'); card.className='card';
-    let html='<div style="font-weight:800;font-size:15px">'+esc(entry.name||entry.phone||'')+'</div>'
-      +'<div class="muted" style="font-size:12.5px;margin-bottom:10px">'+esc(entry.phone||'')+(entry.category?' · '+esc(entry.category):'')+'</div>';
-    ['5-8','8-12'].forEach(band=>{
-      const units=(entry.artwork||{})[band]||{};
-      const keys=Object.keys(units);
-      if(!keys.length) return;
-      html+='<div class="section-title" style="margin-top:8px">ages '+band.replace('-','–')+'</div>'
-        +'<div style="display:flex;flex-wrap:wrap;gap:8px">';
-      keys.sort((a,b)=>(+a)-(+b)).forEach(u=>{
-        const f=units[u]||{};
-        html+='<a href="'+esc(f.url||'#')+'" target="_blank" rel="noopener" class="pill" style="text-decoration:none">unit '+esc(u)+' — '+esc(f.filename||'file')+'</a>';
-      });
-      html+='</div>';
+
+  const unitHeaders=Array.from({length:ARTWORK_UNITS},(_,i)=>'<th>u'+(i+1)+'</th>').join('');
+  let html='<div class="table-wrap"><table class="sum-table"><thead>'
+    +'<tr><th rowspan="2">name</th><th colspan="'+ARTWORK_UNITS+'" style="text-align:center">ages 5–8</th><th colspan="'+ARTWORK_UNITS+'" style="text-align:center">ages 8–12</th></tr>'
+    +'<tr>'+unitHeaders+unitHeaders+'</tr>'
+    +'</thead><tbody>';
+  rows.forEach(tr=>{
+    const entry=byPhone[tr.phone];
+    html+='<tr><td><b>'+esc(tr.name||tr.phone)+'</b></td>';
+    ARTWORK_AGE_BANDS.forEach(band=>{
+      const units=(entry && entry.artwork && entry.artwork[band])||{};
+      for(let u=1; u<=ARTWORK_UNITS; u++){
+        const f=units[String(u)];
+        html+='<td style="text-align:center">'+(f?'<a href="'+esc(f.url||'#')+'" target="_blank" rel="noopener" title="'+esc(f.filename||'')+'">✓</a>':'<span class="muted">—</span>')+'</td>';
+      }
     });
-    card.innerHTML=html;
-    root.appendChild(card);
+    html+='</tr>';
   });
+  html+='</tbody></table></div>';
+  const wrap=document.createElement('div'); wrap.innerHTML=html;
+  root.appendChild(wrap.firstElementChild);
 }
 
 function render(){

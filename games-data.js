@@ -252,5 +252,33 @@ window.GAMES = [
     },
     materials: ["Laminated Art Gym Book (book 3 for 5-8, book 4 alternates)", "Erasable markers, thread, clay, sequins", "A4 sketch sheet", "Crayons, colour pencils, brush pens, yarn + glue (child's pick)"],
     skills: []
+  },
+  {
+    id: "whats-that-sound",
+    category: "public-speaking",
+    name: "What's That Sound",
+    group_size: "3–8 children · 1 educator",
+    duration: "10 min",
+    goal: "the child makes the sound of the ticked object on their card using only voice and body while the group guesses.",
+    steps: [
+      "one child picks a card from the deck without showing it.",
+      "the child makes the sound of the ticked object using only voice and body.",
+      "the other children listen and call out their guesses.",
+      "the first correct guess picks the next card.",
+      "keep going until every child has had a turn."
+    ],
+    ends_when: "every child has had a turn picking and making a sound.",
+    easier: "you name the object out loud with the child first, then they make the sound.",
+    harder: "shuffle and deal 4 cards to each player and play as quartets — ask other players for a series by acting out or making its sound, and collect full sets of 4.",
+    variations: [
+      { name: "Quartets", text: "Shuffle and deal 4 cards to each player. Place the rest face down in the centre. Goal: make sets of 4 matching cards of the same series (quartets). On your turn, ask any player for a series (e.g. nature, animals, vehicles) you need — if they have it, ask for the card by acting out or saying its sound. If you get the card, continue your turn. If not, draw one card from the centre and your turn ends. The first player to collect 1 or 2 full quartets wins." }
+    ],
+    difficulty_levels: {
+      easy: "you name the object out loud with the child first, then they make the sound.",
+      medium: "the child makes the sound of the ticked object using only voice and body while the group guesses.",
+      hard: "shuffle and deal 4 cards to each player and play as quartets — ask other players for a series by acting out or making its sound, and collect full sets of 4."
+    },
+    materials: ["What's That Sound card deck (objects with a ticked sound on each)"],
+    skills: ["VS"]
   }
 ];
