@@ -180,9 +180,12 @@ function tabBar(active){
   const bar=document.createElement('div'); bar.className='tab-bar';
   const gamesBtn=document.createElement('button'); gamesBtn.className='tab-btn'+(active==='games'?' active':''); gamesBtn.textContent='🎮 games';
   gamesBtn.onclick=()=>{ if(active!=='games') renderChecklist(); };
-  const artBtn=document.createElement('button'); artBtn.className='tab-btn'+(active==='artwork'?' active':''); artBtn.textContent='🎨 artwork';
-  artBtn.onclick=()=>{ if(active!=='artwork') renderArtwork(); };
-  bar.append(gamesBtn,artBtn);
+  bar.appendChild(gamesBtn);
+  if(TRAINEE.category==='art-design'){
+    const artBtn=document.createElement('button'); artBtn.className='tab-btn'+(active==='artwork'?' active':''); artBtn.textContent='🎨 artwork';
+    artBtn.onclick=()=>{ if(active!=='artwork') renderArtwork(); };
+    bar.appendChild(artBtn);
+  }
   return bar;
 }
 
@@ -327,7 +330,8 @@ async function renderArtwork(){
   root.appendChild(head);
   root.appendChild(tabBar('artwork'));
 
-  ARTWORK_AGE_BANDS.forEach(band=>{
+  ARTWORK_AGE_BANDS.forEach((band,bandIdx)=>{
+    if(bandIdx>0){ const divider=document.createElement('hr'); divider.className='artwork-band-divider'; root.appendChild(divider); }
     const title=document.createElement('div'); title.className='artwork-band-title'; title.textContent=band.label;
     root.appendChild(title);
     const grid=document.createElement('div'); grid.className='artwork-grid';

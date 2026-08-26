@@ -873,19 +873,21 @@ async function artworkTab(){
     return;
   }
 
-  const unitHeaders=Array.from({length:ARTWORK_UNITS},(_,i)=>'<th>u'+(i+1)+'</th>').join('');
+  const DIVIDER='border-left:3px solid var(--coral);';
+  const unitHeaderRow=withDivider=>Array.from({length:ARTWORK_UNITS},(_,i)=>'<th'+(withDivider&&i===0?' style="'+DIVIDER+'"':'')+'>u'+(i+1)+'</th>').join('');
   let html='<div class="table-wrap"><table class="sum-table"><thead>'
-    +'<tr><th rowspan="2">name</th><th colspan="'+ARTWORK_UNITS+'" style="text-align:center">ages 5–8</th><th colspan="'+ARTWORK_UNITS+'" style="text-align:center">ages 8–12</th></tr>'
-    +'<tr>'+unitHeaders+unitHeaders+'</tr>'
+    +'<tr><th rowspan="2">name</th><th colspan="'+ARTWORK_UNITS+'" style="text-align:center">ages 5–8</th><th colspan="'+ARTWORK_UNITS+'" style="text-align:center;'+DIVIDER+'">ages 8–12</th></tr>'
+    +'<tr>'+unitHeaderRow(false)+unitHeaderRow(true)+'</tr>'
     +'</thead><tbody>';
   rows.forEach(tr=>{
     const entry=byPhone[tr.phone];
     html+='<tr><td><b>'+esc(tr.name||tr.phone)+'</b></td>';
-    ARTWORK_AGE_BANDS.forEach(band=>{
+    ARTWORK_AGE_BANDS.forEach((band,bandIdx)=>{
       const units=(entry && entry.artwork && entry.artwork[band])||{};
       for(let u=1; u<=ARTWORK_UNITS; u++){
         const f=units[String(u)];
-        html+='<td style="text-align:center">'+(f?'<a href="'+esc(f.url||'#')+'" target="_blank" rel="noopener" title="'+esc(f.filename||'')+'">✓</a>':'<span class="muted">—</span>')+'</td>';
+        const divider=(bandIdx===1 && u===1)?DIVIDER:'';
+        html+='<td style="text-align:center;'+divider+'">'+(f?'<a href="'+esc(f.url||'#')+'" target="_blank" rel="noopener" title="'+esc(f.filename||'')+'">✓</a>':'<span class="muted">—</span>')+'</td>';
       }
     });
     html+='</tr>';

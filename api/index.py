@@ -528,6 +528,11 @@ async def artwork_upload(req: Request, authorization: Optional[str] = Header(Non
     content_type}. The pathname is fixed per slot so re-uploading replaces the
     previous file instead of accumulating duplicates in the blob store."""
     role, phone = _check(authorization, {"trainee"})
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+    if trainee.get("category") != "art-design":
+        raise HTTPException(403, "artwork uploads are only for the art & design category")
     b = await req.json()
     age_band = (b.get("age_band") or "").strip()
     filename = (b.get("filename") or "upload").strip()
@@ -551,10 +556,6 @@ async def artwork_upload(req: Request, authorization: Optional[str] = Header(Non
         raise HTTPException(400, "invalid file data")
     if len(data) > ARTWORK_MAX_BYTES:
         raise HTTPException(400, "file too large (max 8MB)")
-
-    trainee = _get_trainee(phone)
-    if not trainee:
-        raise HTTPException(404, "trainee not found")
 
     ext = os.path.splitext(filename)[1][:10]
     pathname = f"artwork/{phone}/{age_band}/unit-{unit}{ext}"
@@ -580,6 +581,8 @@ async def artwork_mine(authorization: Optional[str] = Header(None)):
     trainee = _get_trainee(phone)
     if not trainee:
         raise HTTPException(404, "trainee not found")
+    if trainee.get("category") != "art-design":
+        raise HTTPException(403, "artwork uploads are only for the art & design category")
     return {"artwork": trainee.get("artwork") or {}}
 
 
@@ -589,6 +592,8 @@ async def artwork_delete(age_band: str, unit: int, authorization: Optional[str] 
     trainee = _get_trainee(phone)
     if not trainee:
         raise HTTPException(404, "trainee not found")
+    if trainee.get("category") != "art-design":
+        raise HTTPException(403, "artwork uploads are only for the art & design category")
     artwork = trainee.get("artwork") or {}
     band_entry = artwork.get(age_band) or {}
     entry = band_entry.pop(str(unit), None)
