@@ -300,12 +300,15 @@ function fileToBase64(file){
   });
 }
 
+let MY_ARTWORK_REDO={};
 async function fetchMyArtwork(){
   try{
     const r=await fetch(API+'/api/artwork/mine',{headers:authHeader()});
     if(r.status===401){ localStorage.removeItem(TK); loginView('Session expired — sign in again.'); return false; }
-    MY_ARTWORK = r.ok ? (await r.json()).artwork||{} : {};
-  }catch(e){ MY_ARTWORK={}; }
+    const d=r.ok ? await r.json() : {};
+    MY_ARTWORK = d.artwork||{};
+    MY_ARTWORK_REDO = d.redo||{};
+  }catch(e){ MY_ARTWORK={}; MY_ARTWORK_REDO={}; }
   return true;
 }
 
@@ -337,7 +340,8 @@ async function renderArtwork(){
     const grid=document.createElement('div'); grid.className='artwork-grid';
     for(let unit=1; unit<=ARTWORK_UNITS; unit++){
       const entry=(MY_ARTWORK[band.key]||{})[String(unit)];
-      const slot=document.createElement('div'); slot.className='artwork-slot'+(entry?' filled':'');
+      const needsRedo=(MY_ARTWORK_REDO[band.key]||[]).includes(unit);
+      const slot=document.createElement('div'); slot.className='artwork-slot'+(entry?' filled':'')+(needsRedo?' needs-redo':'');
       const thumb=document.createElement('div'); thumb.className='artwork-slot-thumb';
       if(entry && entry.content_type && entry.content_type.startsWith('image/')) thumb.innerHTML='<img src="'+esc(entry.url)+'" alt="">';
       else thumb.textContent=entry?'📄':'🖼️';
@@ -345,7 +349,9 @@ async function renderArtwork(){
       const label=document.createElement('div'); label.style.cssText='font-weight:700;font-size:12.5px'; label.textContent='unit '+unit;
       slot.appendChild(label);
       const status=document.createElement('div'); status.className='muted'; status.style.cssText='font-size:11px;min-height:14px;margin:3px 0';
-      status.textContent=entry?'✓ submitted':'';
+      if(entry) status.textContent='✓ submitted';
+      else if(needsRedo){ status.textContent='🔁 please redo this one'; status.style.color='#B3261E'; status.style.fontWeight='700'; }
+      else status.textContent='';
       slot.appendChild(status);
       if(!entry){
         const fileInput=document.createElement('input'); fileInput.type='file'; fileInput.accept='image/jpeg,image/png,.pdf'; fileInput.style.display='none';

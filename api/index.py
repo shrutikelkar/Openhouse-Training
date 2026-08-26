@@ -571,8 +571,16 @@ async def artwork_upload(req: Request, authorization: Optional[str] = Header(Non
     }
     artwork[age_band] = band_entry
     trainee["artwork"] = artwork
+
+    # a resubmission clears any "please redo this one" flag staff put on it
+    redo = trainee.get("artwork_redo") or {}
+    band_redo = redo.get(age_band) or []
+    if unit in band_redo:
+        redo[age_band] = [u for u in band_redo if u != unit]
+        trainee["artwork_redo"] = redo
+
     _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
-    return {"ok": True, "artwork": artwork}
+    return {"ok": True, "artwork": artwork, "redo": trainee.get("artwork_redo") or {}}
 
 
 @app.get("/api/artwork/mine")
@@ -583,7 +591,7 @@ async def artwork_mine(authorization: Optional[str] = Header(None)):
         raise HTTPException(404, "trainee not found")
     if trainee.get("category") != "art-design":
         raise HTTPException(403, "artwork uploads are only for the art & design category")
-    return {"artwork": trainee.get("artwork") or {}}
+    return {"artwork": trainee.get("artwork") or {}, "redo": trainee.get("artwork_redo") or {}}
 
 
 @app.delete("/api/artwork/{age_band}/{unit}")
@@ -607,14 +615,58 @@ async def artwork_delete(age_band: str, unit: int, authorization: Optional[str] 
 
 @app.get("/api/admin/artwork")
 async def admin_artwork(authorization: Optional[str] = Header(None)):
-    """Every trainee who has uploaded at least one piece of artwork, for the
-    dashboard's artwork view."""
+    """Every trainee who has uploaded at least one piece of artwork, or has a
+    pending redo request, for the dashboard's artwork view."""
     _check(authorization, {"staff"})
     trainees = _list_trainees()
     return [
-        {"phone": t.get("phone"), "name": t.get("name"), "category": t.get("category"), "artwork": t.get("artwork") or {}}
-        for t in trainees if t.get("artwork")
+        {
+            "phone": t.get("phone"), "name": t.get("name"), "category": t.get("category"),
+            "artwork": t.get("artwork") or {}, "redo": t.get("artwork_redo") or {},
+        }
+        for t in trainees if t.get("artwork") or t.get("artwork_redo")
     ]
+
+
+@app.post("/api/admin/artwork/redo")
+async def admin_artwork_redo(req: Request, authorization: Optional[str] = Header(None)):
+    """Staff asks a trainee to redo one artwork unit: removes the submitted
+    file (if any) so the slot re-opens for upload, and flags it so the
+    trainee sees why — the flag clears automatically once they resubmit."""
+    _check(authorization, {"staff"})
+    b = await req.json()
+    phone = (b.get("phone") or "").strip()
+    age_band = (b.get("age_band") or "").strip()
+    if age_band not in ARTWORK_AGE_BANDS:
+        raise HTTPException(400, f"age_band must be one of {ARTWORK_AGE_BANDS}")
+    try:
+        unit = int(b.get("unit"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "unit must be a number")
+    if not (1 <= unit <= ARTWORK_UNITS):
+        raise HTTPException(400, f"unit must be between 1 and {ARTWORK_UNITS}")
+
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+
+    artwork = trainee.get("artwork") or {}
+    band_entry = artwork.get(age_band) or {}
+    entry = band_entry.pop(str(unit), None)
+    if entry and entry.get("url"):
+        _blob_delete([entry["url"]])
+    artwork[age_band] = band_entry
+    trainee["artwork"] = artwork
+
+    redo = trainee.get("artwork_redo") or {}
+    band_redo = redo.get(age_band) or []
+    if unit not in band_redo:
+        band_redo = band_redo + [unit]
+    redo[age_band] = band_redo
+    trainee["artwork_redo"] = redo
+
+    _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
+    return {"ok": True, "artwork": artwork, "redo": redo}
 
 
 # ---------- explanation quiz ----------

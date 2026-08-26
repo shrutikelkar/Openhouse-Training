@@ -132,6 +132,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--coral)}
 @media (max-width:560px){.artwork-grid{grid-template-columns:repeat(2,1fr)}}
 .artwork-slot{border:1.5px solid var(--line);border-radius:14px;background:#fff;padding:9px;text-align:center;box-shadow:var(--shadow)}
 .artwork-slot.filled{border-color:#cfe4c4}
+.artwork-slot.needs-redo{border-color:#B3261E;background:#FDECEA}
 .artwork-slot-thumb{width:100%;aspect-ratio:1/1;border-radius:10px;background:var(--subtle);display:grid;place-items:center;overflow:hidden;margin-bottom:6px;font-size:26px}
 .artwork-slot-thumb img{width:100%;height:100%;object-fit:cover}
 .progress-ring-wrap{position:relative;width:64px;height:64px;flex:none}

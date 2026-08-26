@@ -845,14 +845,12 @@ async function artworkTab(){
   const byPhone={};
   data.forEach(entry=>{ byPhone[entry.phone]=entry; });
 
-  const categories=[...new Set(TRAINEES.map(tr=>tr.category).filter(Boolean))].sort();
+  // artwork is only ever submitted by art-design trainees (enforced server-side
+  // too) — this view is always scoped to that category, no toggle needed.
   const filterRow=document.createElement('div'); filterRow.style.cssText='display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center';
-  if(categories.length){
-    const sel=document.createElement('select'); sel.id='artwork-category-select'; sel.style.cssText='width:auto;margin-bottom:0;max-width:220px';
-    sel.innerHTML='<option value="">All categories</option>'+categories.map(c=>'<option value="'+esc(c)+'"'+(c===CATEGORY_FILTER?' selected':'')+'>'+esc(c)+'</option>').join('');
-    sel.onchange=()=>{ CATEGORY_FILTER=sel.value; render(); };
-    filterRow.appendChild(sel);
-  }
+  const scopeNote=document.createElement('span'); scopeNote.className='muted'; scopeNote.style.fontSize='12.5px';
+  scopeNote.textContent='showing art-design trainees only';
+  filterRow.appendChild(scopeNote);
   if(TRAINEE_FILTER){
     const pill=document.createElement('span'); pill.className='pill coral';
     pill.innerHTML='trainee: '+esc(TRAINEE_FILTER)+' <span style="cursor:pointer" id="clear-artwork-trainee">✕</span>';
@@ -863,7 +861,7 @@ async function artworkTab(){
   if(clearBtn) clearBtn.onclick=()=>{ TRAINEE_FILTER=''; render(); };
 
   const rows=TRAINEES
-    .filter(tr=>!CATEGORY_FILTER||tr.category===CATEGORY_FILTER)
+    .filter(tr=>tr.category==='art-design')
     .filter(tr=>!TRAINEE_FILTER||tr.name===TRAINEE_FILTER)
     .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
 
@@ -884,17 +882,44 @@ async function artworkTab(){
     html+='<tr><td><b>'+esc(tr.name||tr.phone)+'</b></td>';
     ARTWORK_AGE_BANDS.forEach((band,bandIdx)=>{
       const units=(entry && entry.artwork && entry.artwork[band])||{};
+      const redoUnits=(entry && entry.redo && entry.redo[band])||[];
       for(let u=1; u<=ARTWORK_UNITS; u++){
         const f=units[String(u)];
         const divider=(bandIdx===1 && u===1)?DIVIDER:'';
-        html+='<td style="text-align:center;'+divider+'">'+(f?'<a href="'+esc(f.url||'#')+'" target="_blank" rel="noopener" title="'+esc(f.filename||'')+'">✓</a>':'<span class="muted">—</span>')+'</td>';
+        let cell;
+        if(f){
+          cell='<a href="'+esc(f.url||'#')+'" target="_blank" rel="noopener" title="'+esc(f.filename||'')+'">✓</a> '
+            +'<span class="ghost" style="cursor:pointer;font-size:10px;padding:1px 5px;border-radius:6px" '
+            +'data-redo-phone="'+esc(tr.phone)+'" data-redo-band="'+esc(band)+'" data-redo-unit="'+u+'" title="ask '+esc(tr.name||'')+' to redo this one">↺</span>';
+        } else if(redoUnits.includes(u)){
+          cell='<span style="color:#B3261E" title="redo requested — waiting for resubmission">🔁</span>';
+        } else {
+          cell='<span class="muted">—</span>';
+        }
+        html+='<td style="text-align:center;'+divider+'">'+cell+'</td>';
       }
     });
     html+='</tr>';
   });
   html+='</tbody></table></div>';
   const wrap=document.createElement('div'); wrap.innerHTML=html;
-  root.appendChild(wrap.firstElementChild);
+  const tableEl=wrap.firstElementChild;
+  root.appendChild(tableEl);
+
+  tableEl.querySelectorAll('[data-redo-phone]').forEach(el=>{
+    el.onclick=async()=>{
+      const phone=el.dataset.redoPhone, ageBand=el.dataset.redoBand, unit=el.dataset.redoUnit;
+      if(!confirm('Ask this trainee to redo unit '+unit+' (ages '+ageBand.replace('-','–')+')? This removes their current submission for that unit.')) return;
+      try{
+        const r=await fetch(API+'/api/admin/artwork/redo',{method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+t},
+          body:JSON.stringify({phone, age_band:ageBand, unit:Number(unit)})});
+        const d=await r.json();
+        if(!r.ok) throw new Error(d.detail||'could not send redo request');
+        render();
+      }catch(e){ alert(e.message||'could not send redo request'); }
+    };
+  });
 }
 
 function render(){
