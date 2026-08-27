@@ -676,6 +676,10 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
     prior_questions = [h.get("text", "") for h in history if h.get("role") == "ai"]
     skill_names = [SKILL_LABELS.get(code, code) for code in game.get("skills") or []]
     debrief_questions = game.get("debrief") or []
+    has_challenge = bool(game.get("easier") or game.get("harder"))
+    lanyard_skills = game.get("lanyard_skills") or []
+    scenarios = game.get("scenarios") or []
+    facts = game.get("facts") or []
 
     if age_band in ("5–8", "5-8"):
         age_example_rule = (
@@ -711,9 +715,39 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
         "goal and how to play, using the 'goal'/'steps' fields as the correct answer.\n"
         "- Across the whole conversation, ask at least one question about what materials "
         "or equipment the game needs, using the 'materials' field as the correct answer.\n"
-        "- Across the whole conversation, ask at least one challenge question about how "
-        "to make the game easier or harder for a child's needs, using the 'easier'/'harder'/"
-        "'difficulty_levels' fields in the reference data as the correct answer.\n"
+        + (
+            "- Across the whole conversation, ask at least one challenge question about how "
+            "to make the game easier or harder for a child's needs, using the 'easier'/'harder'/"
+            "'difficulty_levels' fields in the reference data as the correct answer.\n"
+            if has_challenge else ""
+        )
+        + (
+            "- Across the whole conversation, ask the trainee to describe at least one individual "
+            "skill lanyard from the reference data's 'lanyard_skills' list, in their own words — "
+            "what it means and what it looks like in a child, checked against its 'description' field. "
+            + (
+                "Mimicry MUST be one of the lanyards you ask about at some point in the "
+                "conversation, since it's the one trainees most often misunderstand. "
+                if any((ls.get("name") or "").lower() == "mimicry" for ls in lanyard_skills) else ""
+            )
+            + "\n"
+            if lanyard_skills else ""
+        )
+        + (
+            "- Across the whole conversation, present the trainee with ONE fabricated scenario "
+            "from the reference data's 'scenarios' list (describe the child's situation using its "
+            "'scenario' field) and ask which lanyard they'd give that child and why. Their answer "
+            "is correct if it names the scenario's 'lanyard' field, or another lanyard they justify "
+            "just as soundly using reasoning like its 'why' field — do not require exact wording.\n"
+            if scenarios else ""
+        )
+        + (
+            "- Across the whole conversation, ask the trainee ONE fact-check question for EACH "
+            "entry in the reference data's 'facts' list (e.g. whether it's ever okay to skip using "
+            "lanyards, and whether every child can be given the same lanyard) and check their "
+            "answer against that fact — do not skip any of them.\n"
+            if facts else ""
+        )
         + (
             "- Across the whole conversation, also ask at least one question about a variation "
             "of the game — e.g. ask the trainee to describe one of the reference data's "
@@ -743,14 +777,25 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
         "(a missing step, a specific material, the group size, the easier/harder answer, "
         "a variation, a skill, or a debrief reflection).\n"
         "- If you cannot think of a new, specific, non-repetitive question — because the "
-        "trainee has already covered the goal, steps, materials, an easier/harder answer"
+        "trainee has already covered the goal, steps, and materials"
+        + (", an easier/harder answer" if has_challenge else "")
         + (", a variation" if game.get("variations") else "")
         + (", a skill" if skill_names else "")
+        + (", a lanyard description" if lanyard_skills else "")
+        + (", a scenario" if scenarios else "")
+        + (", a fact-check" if facts else "")
         + (", and a debrief reflection" if debrief_questions else "")
         + " — finalize instead of asking anything further, even before the max turn.\n"
         "- Target the biggest gap or error first (missing step, wrong material, wrong group "
-        "size/goal, a wrong/missing easier-harder answer, an uncovered variation, a missing "
-        "skill answer, or a missing debrief reflection).\n"
+        "size/goal"
+        + (", a wrong/missing easier-harder answer" if has_challenge else "")
+        + (", an uncovered variation" if game.get("variations") else "")
+        + (", a missing skill answer" if skill_names else "")
+        + (", a missing/wrong lanyard description" if lanyard_skills else "")
+        + (", a wrong scenario answer" if scenarios else "")
+        + (", a wrong fact-check answer" if facts else "")
+        + (", or a missing debrief reflection" if debrief_questions else "")
+        + ").\n"
         "- When finalizing, score five criteria as 1 (met) or 0 (not met):\n"
         "  1. age_appropriateness — this is NOT just about materials/pacing. The trainee must have "
         "actually pitched the explanation AS IF speaking directly to the children themselves (simple, "
@@ -759,22 +804,38 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
         "a fail even if every fact is correct). "
         + age_example_rule + "\n"
         "  2. clarity — was the explanation easy to follow, steps in a sensible order.\n"
-        "  3. gameplay_accuracy — did the core mechanics match the reference: goal, steps, and materials.\n"
-        "  4. challenge_accuracy — did they give a correct easier/harder difficulty-adjustment answer "
-        "(scored separately from gameplay_accuracy — a trainee can get the game right but the "
-        "difficulty adjustment wrong, or vice versa). This counts as correct (1) if it matches the "
-        "reference 'easier'/'harder'/'difficulty_levels' fields, OR if they propose a different but "
-        "genuinely sound, sensible, age-appropriate way to adjust difficulty — do not penalize a good "
-        "idea just because it isn't the documented one.\n"
-        "  5. genuine — 1 if this reads as their own understanding in their own words, 0 if it reads "
+        + (
+            "  3. gameplay_accuracy — did the core mechanics match the reference: goal, steps, and materials.\n"
+            "  4. challenge_accuracy — did they give a correct easier/harder difficulty-adjustment answer "
+            "(scored separately from gameplay_accuracy — a trainee can get the game right but the "
+            "difficulty adjustment wrong, or vice versa). This counts as correct (1) if it matches the "
+            "reference 'easier'/'harder'/'difficulty_levels' fields, OR if they propose a different but "
+            "genuinely sound, sensible, age-appropriate way to adjust difficulty — do not penalize a good "
+            "idea just because it isn't the documented one.\n"
+            if has_challenge else
+            "  3. gameplay_accuracy — here this criterion means ACCURACY OF EXPLANATION: did the trainee "
+            "correctly explain the purpose and mechanics from the reference data (the goal/steps, and any "
+            "lanyard-skill description, scenario answer, or fact-check they were asked about)? There is "
+            "no easier/harder difficulty adjustment for this item — never ask for or expect one.\n"
+            "  4. challenge_accuracy — here this criterion means ACCURACY OF DEBRIEF: did the trainee "
+            "give a sound, genuine, age-appropriate answer when asked how they'd debrief a child about "
+            "their focused skill? Score this against the debrief question(s) actually asked, not "
+            "against any difficulty-adjustment concept.\n"
+        )
+        + "  5. genuine — 1 if this reads as their own understanding in their own words, 0 if it reads "
         "as reading directly from the reference script (use the genuineness signal above as evidence).\n\n"
-        "Additionally, when finalizing: if the trainee's easier/harder answer included a genuinely NEW "
-        "idea for adjusting difficulty — one that is NOT already described in the reference 'easier'/"
-        "'harder'/'difficulty_levels'/'variations' fields, and is a sensible, usable suggestion — "
-        "capture it in a \"new_idea\" field (a short, cleaned-up sentence describing the idea). If there "
-        "was no new idea (they just repeated or paraphrased the documented answer, or gave nothing "
-        "usable), set \"new_idea\" to null. Only include \"new_idea\" in the final action, not in ask.\n\n"
-        "Also when finalizing, include trainee-facing feedback split into two parts (the \"reasoning\" "
+        + (
+            "Additionally, when finalizing: if the trainee's easier/harder answer included a genuinely NEW "
+            "idea for adjusting difficulty — one that is NOT already described in the reference 'easier'/"
+            "'harder'/'difficulty_levels'/'variations' fields, and is a sensible, usable suggestion — "
+            "capture it in a \"new_idea\" field (a short, cleaned-up sentence describing the idea). If there "
+            "was no new idea (they just repeated or paraphrased the documented answer, or gave nothing "
+            "usable), set \"new_idea\" to null. Only include \"new_idea\" in the final action, not in ask.\n\n"
+            if has_challenge else
+            "Additionally, when finalizing: there is no difficulty-adjustment concept for this item, so "
+            "always set \"new_idea\" to null.\n\n"
+        )
+        + "Also when finalizing, include trainee-facing feedback split into two parts (the \"reasoning\" "
         "field above is a separate, more technical note for the admin dashboard only — it is NEVER "
         "shown to the trainee, so it can be blunt; these two fields ARE shown to the trainee, so they "
         "must be constructive and encouraging in tone even when pointing out a miss):\n"
@@ -842,6 +903,7 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
             "reasoning": "Reached the maximum number of follow-up questions without a clear finalization from the model.",
             "strengths": "You stayed with it through several follow-up questions.",
             "improvements": [{"criterion": k, "reason": "This wasn't confirmed within the allowed number of follow-ups.", "fix": "Try covering this clearly in your first answer next time."} for k in ("age_appropriateness", "clarity", "gameplay_accuracy", "challenge_accuracy", "genuine")],
+            "redo_reason": "timeout",
         }
     if result.get("action") == "final":
         result.setdefault("scores", {}).setdefault("genuine", 0)
@@ -849,6 +911,9 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
         result.setdefault("strengths", "")
         result.setdefault("improvements", [])
         result.setdefault("suggestion", "")
+        # "timeout" means the conversation ran out of turns (a system limit, not a
+        # genuineness judgement); anything else with genuine=0 is a real model call.
+        result.setdefault("redo_reason", "not_genuine" if not result["scores"].get("genuine") else None)
     return result
 
 

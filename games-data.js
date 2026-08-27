@@ -1082,5 +1082,59 @@ window.GAMES = [
       "Did anyone hear a speaker who used great body language?",
       "Did someone answer a tough question well?"
     ]
+  },
+  {
+    id: "skill-lanyards",
+    category: "public-speaking",
+    section: "lanyards",
+    age_bands: ["5–8", "8–12"],
+    name: "Skill Lanyards",
+    group_size: "whole class · 1 educator",
+    duration: null,
+    goal: "each child wears a skill lanyard that names the one focus area they're working on that session, so both the child and the educator can pay deliberate attention to that skill during every game.",
+    steps: [
+      "before the session starts, the educator reviews each child's focus areas and picks one lanyard per child for that day.",
+      "the educator hands out the lanyards at the start of the session, telling each child which skill they're focusing on and why.",
+      "through the session's games, the educator watches for and nudges that specific skill for each child, alongside normal play.",
+      "at the end of each game or at the end of the session, the educator debriefs one-on-one with the child about their focused skill — what they noticed, what went well, what to try next time."
+    ],
+    ends_when: "the session ends — lanyards are collected back after the closing debrief, ready to be reassigned next session.",
+    variations: [],
+    materials: ["Vocal Skills lanyard set (5 cards — volume, mimicry, clarity, tone, emphasis)", "Body Language lanyard set (4 cards — gestures & expressions, eye contact, movement, posture)", "Content & Structure lanyard set (6 cards — structure, comprehension, vocabulary, inquiry, interaction, engagement)"],
+    skills: ["VS", "BL", "C&S"],
+    lanyard_skills: [
+      { skill: "VS", name: "Volume", description: "speaking loudly and clearly enough for the whole group to hear, without shouting." },
+      { skill: "VS", name: "Mimicry", description: "copying a sound, voice, accent, or way of speaking — used to build vocal flexibility and confidence trying different voices." },
+      { skill: "VS", name: "Clarity", description: "pronouncing words distinctly so listeners don't have to guess what was said." },
+      { skill: "VS", name: "Tone", description: "using the voice's pitch and warmth to match the feeling of what's being said." },
+      { skill: "VS", name: "Emphasis", description: "stressing the right words in a sentence to bring out its meaning." },
+      { skill: "BL", name: "Gestures & Expressions", description: "using hands, face, and body movement to support and add meaning to what's being said." },
+      { skill: "BL", name: "Eye Contact", description: "looking at listeners while speaking, to build connection and confidence." },
+      { skill: "BL", name: "Movement", description: "using purposeful movement around a space rather than standing frozen or fidgeting." },
+      { skill: "BL", name: "Posture", description: "standing or sitting in a way that looks confident and open." },
+      { skill: "C&S", name: "Structure", description: "organizing what's said with a clear beginning, middle, and end." },
+      { skill: "C&S", name: "Comprehension", description: "understanding what's being asked or discussed well enough to respond on-topic." },
+      { skill: "C&S", name: "Vocabulary", description: "choosing accurate, varied words to express an idea." },
+      { skill: "C&S", name: "Inquiry", description: "asking thoughtful questions to explore or clarify a topic." },
+      { skill: "C&S", name: "Interaction", description: "engaging back and forth with other speakers rather than talking at them." },
+      { skill: "C&S", name: "Engagement", description: "holding the listener's interest and attention throughout." }
+    ],
+    scenarios: [
+      { scenario: "A child rushes through their turn and mumbles so quietly that the group keeps asking them to repeat themselves.", lanyard: "Volume", why: "the core gap is that they aren't projecting loud enough to be heard, which is exactly what the Volume lanyard targets." },
+      { scenario: "A child tells a story well but stands rigidly with their arms crossed the whole time and never looks up.", lanyard: "Eye Contact", why: "the words are fine — the gap is connecting with listeners by looking at them, which the Eye Contact lanyard targets." },
+      { scenario: "A child's explanation of a game jumps around — the ending gets mentioned before the setup, and the group gets confused about the order of events.", lanyard: "Structure", why: "the content is all there, but it isn't organized into a clear beginning, middle, and end." },
+      { scenario: "A child is asked to imitate an angry pirate's voice for a game and just uses their normal speaking voice instead.", lanyard: "Mimicry", why: "the ask is specifically to take on a different voice or way of speaking, which is what the Mimicry lanyard builds." },
+      { scenario: "During a group discussion, a child answers every question fully but never asks anything back or responds to what a peer just said.", lanyard: "Interaction", why: "the child communicates one-way; the gap is engaging back and forth with other speakers." }
+    ],
+    facts: [
+      "Lanyards are used in every session — there is no circumstance in which it's okay to skip using them.",
+      "Not every child gets the same lanyard. Multiple children can share a lanyard if it suits both of them, but a lanyard is assigned based on each child's own focus area, so not everyone in the group will have the same one."
+    ],
+    debrief: [
+      "How would you open a debrief with a child about the specific skill on their lanyard today?",
+      "A child wore the 'Eye Contact' lanyard today but you didn't see much improvement — how would you debrief that honestly but encouragingly?",
+      "How do you make sure the debrief feels like a genuine conversation with the child, not a test or a lecture?"
+    ],
+    criteria_labels: { gameplay_accuracy: "accuracy of explanation", challenge_accuracy: "accuracy of debrief" }
   }
 ];

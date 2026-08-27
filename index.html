@@ -176,7 +176,7 @@ function gameIconSVG(id, size){
   return '<svg viewBox="0 0 100 100" width="'+size+'" height="'+size+'" xmlns="http://www.w3.org/2000/svg">'
     +'<rect x="2" y="2" width="96" height="96" rx="26" fill="#FFF7EE"/>'+inner+'</svg>';
 }
-const GAME_PHOTOS={'match-me':'images/games/match-me.jpg','colour-flip':'images/games/colour-flip.jpg','shape-stitch':'images/games/shape-stitch.jpg','shape-fusion':'images/games/shape-fusion.jpg','cue-cards':'images/games/cue-cards.jpg','artventure':'images/games/artventure.jpg','imagine-that':'images/games/imagine-that.jpg','doodle-dash':'images/games/doodle-dash.jpg','art-gym-book':'images/games/art-gym-book.jpg','every-body-says':'images/games/every-body-says.jpg','whats-that-sound':'images/games/whats-that-sound.jpg','script-flip':'images/games/script-flip.jpg','tale-trail':'images/games/tale-trail.jpg','shuffle':'images/games/shuffle.jpg','body-talk':'images/games/body-talk.jpg','watch-your-step':'images/games/watch-your-step.jpg','train-of-thoughts':'images/games/train-of-thoughts.jpg','guess-me':'images/games/guess-me.jpg','spaggle':'images/games/spaggle.jpg','pitch-perfect':'images/games/pitch-perfect.jpg','speech-a-palooza':'images/games/speech-a-palooza.jpg','improv-survival':'images/games/improv-survival.jpg','debate-duel':'images/games/debate-duel.jpg'};
+const GAME_PHOTOS={'match-me':'images/games/match-me.jpg','colour-flip':'images/games/colour-flip.jpg','shape-stitch':'images/games/shape-stitch.jpg','shape-fusion':'images/games/shape-fusion.jpg','cue-cards':'images/games/cue-cards.jpg','artventure':'images/games/artventure.jpg','imagine-that':'images/games/imagine-that.jpg','doodle-dash':'images/games/doodle-dash.jpg','art-gym-book':'images/games/art-gym-book.jpg','every-body-says':'images/games/every-body-says.jpg','whats-that-sound':'images/games/whats-that-sound.jpg','script-flip':'images/games/script-flip.jpg','tale-trail':'images/games/tale-trail.jpg','shuffle':'images/games/shuffle.jpg','body-talk':'images/games/body-talk.jpg','watch-your-step':'images/games/watch-your-step.jpg','train-of-thoughts':'images/games/train-of-thoughts.jpg','guess-me':'images/games/guess-me.jpg','spaggle':'images/games/spaggle.jpg','pitch-perfect':'images/games/pitch-perfect.jpg','speech-a-palooza':'images/games/speech-a-palooza.jpg','improv-survival':'images/games/improv-survival.jpg','debate-duel':'images/games/debate-duel.jpg','skill-lanyards':'images/games/skill-lanyards.jpg'};
 
 // artwork tab thumbnail — a palette + brush, in the same flat/rounded style as the mascot
 function artworkThumbSVG(size){
@@ -298,8 +298,8 @@ async function renderChecklist(){
     return tile;
   }
 
-  const SECTION_ORDER=['roll-call','playground','showtime'];
-  const SECTION_LABELS={'roll-call':'Roll Call','playground':'Playground','showtime':'Showtime'};
+  const SECTION_ORDER=['roll-call','playground','showtime','lanyards'];
+  const SECTION_LABELS={'roll-call':'Roll Call','playground':'Playground','showtime':'Showtime','lanyards':'Lanyards'};
   const hasSections=games.some(g=>g.section);
   if(hasSections){
     const sections=[...SECTION_ORDER, ...new Set(games.map(g=>g.section).filter(s=>s && !SECTION_ORDER.includes(s)))];
@@ -661,6 +661,7 @@ function renderFinal(){
   root.innerHTML='';
   const s=(STATE.finalResult||{}).scores||{};
   const total=scoreTotal(s);
+  const labels=Object.assign({}, CRITERIA_LABELS, STATE.game.criteria_labels||{});
   const card=document.createElement('div'); card.className='card center';
   card.innerHTML='<div class="mascot" style="margin:0 auto 4px">'+mascotSVG(total===5?64:48)+'</div>'
     +(total===5?'<div style="font-size:13px;font-weight:800;color:var(--sage)">perfect score! 🎉</div>':'')
@@ -669,8 +670,8 @@ function renderFinal(){
     +'<div class="scorebar center" style="justify-content:center">'
       +'<span class="sc '+(s.age_appropriateness?'yes':'no')+'">'+(s.age_appropriateness?'✓':'✗')+' age fit (ages '+esc(STATE.ageBand)+')</span>'
       +'<span class="sc '+(s.clarity?'yes':'no')+'">'+(s.clarity?'✓':'✗')+' clarity</span>'
-      +'<span class="sc '+(s.gameplay_accuracy?'yes':'no')+'">'+(s.gameplay_accuracy?'✓':'✗')+' gameplay accuracy</span>'
-      +'<span class="sc '+(s.challenge_accuracy?'yes':'no')+'">'+(s.challenge_accuracy?'✓':'✗')+' challenge accuracy</span>'
+      +'<span class="sc '+(s.gameplay_accuracy?'yes':'no')+'">'+(s.gameplay_accuracy?'✓':'✗')+' '+esc(labels.gameplay_accuracy)+'</span>'
+      +'<span class="sc '+(s.challenge_accuracy?'yes':'no')+'">'+(s.challenge_accuracy?'✓':'✗')+' '+esc(labels.challenge_accuracy)+'</span>'
       +'<span class="sc '+(s.genuine?'yes':'no')+'">'+(s.genuine?'✓':'✗')+' genuine</span>'
     +'</div>';
   // "reasoning" is the admin/dashboard-only technical note — never shown here.
@@ -680,8 +681,11 @@ function renderFinal(){
   const feedbackWrap=document.createElement('div'); feedbackWrap.style.textAlign='left';
   if(notGenuine){
     const box=document.createElement('div'); box.className='feedback-box'; box.style.background='var(--coral-tint)'; box.style.border='1.5px solid var(--coral)';
+    const redoExplain=STATE.finalResult.redo_reason==='timeout'
+      ? 'The conversation ran out of follow-up questions before everything could be confirmed.'
+      : 'This sounded like it was read from the material rather than explained in your own words.';
     box.innerHTML='<div class="ft" style="color:var(--coral-dark)">🔁 please redo this one</div>'
-      +'<div style="font-size:13.5px">This sounded like it was read from the material rather than explained in your own words. '
+      +'<div style="font-size:13.5px">'+redoExplain+' '
       +(canRedo?'Try explaining it again, in your own words.':'You\'ve used both attempts for this game — talk to your admin if you\'d like another try.')+'</div>';
     feedbackWrap.appendChild(box);
   }
@@ -695,7 +699,7 @@ function renderFinal(){
     const box=document.createElement('div'); box.className='feedback-box';
     let inner='<div class="ft">🎯 what to improve</div>';
     improvements.forEach(imp=>{
-      const label=CRITERIA_LABELS[imp.criterion]||imp.criterion||'';
+      const label=labels[imp.criterion]||imp.criterion||'';
       inner+='<div style="margin-bottom:10px"><div style="font-weight:800;font-size:13px;color:var(--coral-dark)">'+esc(label)+'</div>'
         +'<div style="font-size:13.5px;margin-top:2px">'+esc(imp.reason||'')+'</div>'
         +(imp.fix?'<div style="font-size:13.5px;margin-top:3px"><b>Try this:</b> '+esc(imp.fix)+'</div>':'')
