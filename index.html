@@ -298,7 +298,7 @@ async function renderChecklist(){
     return tile;
   }
 
-  const SECTION_ORDER=['roll-call','playground','showtime','lanyards'];
+  const SECTION_ORDER=['lanyards','roll-call','playground','showtime'];
   const SECTION_LABELS={'roll-call':'Roll Call','playground':'Playground','showtime':'Showtime','lanyards':'Lanyards'};
   const hasSections=games.some(g=>g.section);
   if(hasSections){
