@@ -127,6 +127,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--coral)}
   font-family:inherit;font-weight:800;font-size:13.5px;cursor:pointer;color:var(--muted)}
 .tab-btn.active{background:var(--coral);border-color:var(--coral);color:#fff}
 .artwork-band-title{font-weight:800;font-size:17px;letter-spacing:.02em;text-transform:uppercase;color:var(--teal);margin:18px 0 10px}
+.game-section-title{font-weight:800;font-size:17px;letter-spacing:.02em;text-transform:uppercase;color:var(--teal);margin:18px 0 10px}
 .artwork-band-divider{border:none;border-top:2px solid var(--line);margin:24px 0 0}
 .artwork-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
 @media (max-width:560px){.artwork-grid{grid-template-columns:repeat(2,1fr)}}

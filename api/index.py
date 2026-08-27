@@ -82,6 +82,19 @@ SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 
 CATEGORIES = ["art-design", "public-speaking", "robotics", "music", "chess"]
 
+# games-data.js tags each game with short skill codes (e.g. "L&T") — expanded
+# here so both the AI prompt and its questions use the real name, never the code.
+SKILL_LABELS = {
+    "C&P": "Colour & Painting",
+    "L&T": "Line & Texture",
+    "S&F": "Shape & Form",
+    "B&C": "Balance & Composition",
+    "I&C": "Imagination & Collaboration",
+    "VS": "Vocal Skills",
+    "BL": "Body Language",
+    "C&S": "Content & Structure",
+}
+
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -131,8 +144,10 @@ def _redis(*cmd):
 def _blob_put(pathname: str, data: bytes, content_type: str) -> dict:
     """Uploads bytes to Vercel Blob via its raw REST API — there's no official
     Python SDK, only JS/TS, so this talks to blob.vercel-storage.com directly.
-    allow-overwrite is always on since each (trainee, age band, unit) slot maps
-    to one fixed pathname and a re-upload is meant to replace, not duplicate."""
+    x-add-random-suffix lets Vercel itself guarantee a unique path (never
+    allow-overwrite) so a resubmission can never collide with or destroy an
+    earlier upload — the actual final URL always comes back in the response,
+    so the caller-supplied pathname only needs to be a readable hint."""
     if not BLOB_TOKEN:
         raise HTTPException(500, "no blob storage configured — add BLOB_READ_WRITE_TOKEN")
     url = f"{BLOB_API_BASE}/?pathname={urllib.parse.quote(pathname)}"
@@ -143,8 +158,7 @@ def _blob_put(pathname: str, data: bytes, content_type: str) -> dict:
             "x-api-version": BLOB_API_VERSION,
             "x-content-type": content_type,
             "access": "public",
-            "x-add-random-suffix": "0",
-            "x-allow-overwrite": "1",
+            "x-add-random-suffix": "1",
         },
     )
     try:
@@ -152,26 +166,6 @@ def _blob_put(pathname: str, data: bytes, content_type: str) -> dict:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
         raise HTTPException(502, f"blob upload failed: {e.read().decode(errors='replace')}")
-
-
-def _blob_delete(urls: list):
-    if not BLOB_TOKEN or not urls:
-        return
-    req = urllib.request.Request(
-        f"{BLOB_API_BASE}/delete",
-        data=json.dumps({"urls": urls}).encode(),
-        method="POST",
-        headers={
-            "authorization": f"Bearer {BLOB_TOKEN}",
-            "x-api-version": BLOB_API_VERSION,
-            "content-type": "application/json",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            r.read()
-    except urllib.error.HTTPError:
-        pass  # best-effort — a stale blob left behind isn't worth failing the request over
 
 
 def _get_trainee(phone: str) -> Optional[dict]:
@@ -525,8 +519,9 @@ async def get_categories(authorization: Optional[str] = Header(None)):
 async def artwork_upload(req: Request, authorization: Optional[str] = Header(None)):
     """Uploads/replaces one artwork slot (a given age band + unit number) for
     the signed-in trainee. Body: {age_band, unit, file (base64), filename,
-    content_type}. The pathname is fixed per slot so re-uploading replaces the
-    previous file instead of accumulating duplicates in the blob store."""
+    content_type}. Each submission gets its own timestamped pathname — a
+    resubmission never overwrites or deletes the previous file, it just
+    becomes the one shown in artwork[age_band][unit]."""
     role, phone = _check(authorization, {"trainee"})
     trainee = _get_trainee(phone)
     if not trainee:
@@ -558,17 +553,22 @@ async def artwork_upload(req: Request, authorization: Optional[str] = Header(Non
         raise HTTPException(400, "file too large (max 8MB)")
 
     ext = os.path.splitext(filename)[1][:10]
-    pathname = f"artwork/{phone}/{age_band}/unit-{unit}{ext}"
+    pathname = f"artwork/{phone}/{age_band}/unit-{unit}-{int(time.time() * 1000)}{ext}"
     result = _blob_put(pathname, data, content_type)
 
     artwork = trainee.get("artwork") or {}
     band_entry = artwork.get(age_band) or {}
-    band_entry[str(unit)] = {
+    # each unit holds every submission ever made for it, oldest first — a
+    # resubmission appends rather than replaces, so nothing is ever lost
+    existing = band_entry.get(str(unit))
+    history = existing if isinstance(existing, list) else ([existing] if existing else [])
+    history.append({
         "url": result.get("url"),
         "filename": filename,
         "content_type": content_type,
         "uploaded_at": time.strftime("%Y-%m-%d %H:%M"),
-    }
+    })
+    band_entry[str(unit)] = history
     artwork[age_band] = band_entry
     trainee["artwork"] = artwork
 
@@ -594,25 +594,6 @@ async def artwork_mine(authorization: Optional[str] = Header(None)):
     return {"artwork": trainee.get("artwork") or {}, "redo": trainee.get("artwork_redo") or {}}
 
 
-@app.delete("/api/artwork/{age_band}/{unit}")
-async def artwork_delete(age_band: str, unit: int, authorization: Optional[str] = Header(None)):
-    role, phone = _check(authorization, {"trainee"})
-    trainee = _get_trainee(phone)
-    if not trainee:
-        raise HTTPException(404, "trainee not found")
-    if trainee.get("category") != "art-design":
-        raise HTTPException(403, "artwork uploads are only for the art & design category")
-    artwork = trainee.get("artwork") or {}
-    band_entry = artwork.get(age_band) or {}
-    entry = band_entry.pop(str(unit), None)
-    if entry and entry.get("url"):
-        _blob_delete([entry["url"]])
-    artwork[age_band] = band_entry
-    trainee["artwork"] = artwork
-    _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
-    return {"ok": True, "artwork": artwork}
-
-
 @app.get("/api/admin/artwork")
 async def admin_artwork(authorization: Optional[str] = Header(None)):
     """Every trainee who has uploaded at least one piece of artwork, or has a
@@ -630,9 +611,10 @@ async def admin_artwork(authorization: Optional[str] = Header(None)):
 
 @app.post("/api/admin/artwork/redo")
 async def admin_artwork_redo(req: Request, authorization: Optional[str] = Header(None)):
-    """Staff asks a trainee to redo one artwork unit: removes the submitted
-    file (if any) so the slot re-opens for upload, and flags it so the
-    trainee sees why — the flag clears automatically once they resubmit."""
+    """Staff asks a trainee to redo one artwork unit. The current submission
+    is left in place (still viewable) — only the flag is set, so the trainee
+    sees why; resubmitting via /api/artwork/upload overwrites the old file
+    at the same pathname and clears the flag automatically."""
     _check(authorization, {"staff"})
     b = await req.json()
     phone = (b.get("phone") or "").strip()
@@ -650,14 +632,6 @@ async def admin_artwork_redo(req: Request, authorization: Optional[str] = Header
     if not trainee:
         raise HTTPException(404, "trainee not found")
 
-    artwork = trainee.get("artwork") or {}
-    band_entry = artwork.get(age_band) or {}
-    entry = band_entry.pop(str(unit), None)
-    if entry and entry.get("url"):
-        _blob_delete([entry["url"]])
-    artwork[age_band] = band_entry
-    trainee["artwork"] = artwork
-
     redo = trainee.get("artwork_redo") or {}
     band_redo = redo.get(age_band) or []
     if unit not in band_redo:
@@ -666,7 +640,7 @@ async def admin_artwork_redo(req: Request, authorization: Optional[str] = Header
     trainee["artwork_redo"] = redo
 
     _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
-    return {"ok": True, "artwork": artwork, "redo": redo}
+    return {"ok": True, "artwork": trainee.get("artwork") or {}, "redo": redo}
 
 
 # ---------- explanation quiz ----------
@@ -700,6 +674,8 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
     history = b.get("history") or []
     trainee_turns = sum(1 for h in history if h.get("role") == "trainee")
     prior_questions = [h.get("text", "") for h in history if h.get("role") == "ai"]
+    skill_names = [SKILL_LABELS.get(code, code) for code in game.get("skills") or []]
+    debrief_questions = game.get("debrief") or []
 
     if age_band in ("5–8", "5-8"):
         age_example_rule = (
@@ -714,12 +690,13 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
         )
 
     system = (
-        "You are quizzing a childcare educator-in-training on an art & design game "
+        "You are quizzing a childcare educator-in-training on a game "
         "they must run with children. You have the game's authoritative reference "
         "data below. Listen to what the trainee said and decide whether to ask one "
         "more short follow-up question, or finalize scoring.\n\n"
         f"Reference data (JSON): {json.dumps(game, ensure_ascii=False)}\n\n"
-        f"The trainee has been told to explain this game for a group of children aged {age_band}.\n\n"
+        + (f"This game targets these skills: {', '.join(skill_names)}.\n\n" if skill_names else "")
+        + f"The trainee has been told to explain this game for a group of children aged {age_band}.\n\n"
         + _genuineness_signal(game, history) + "\n"
         + (
             "Questions you have ALREADY asked in this conversation (do NOT repeat any of "
@@ -730,6 +707,10 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
         + "Rules:\n"
         f"- The trainee must answer at least {EXPLAIN_MIN_TURNS} turns before you finalize.\n"
         f"- You must finalize by turn {EXPLAIN_MAX_TURNS} no matter what.\n"
+        "- Across the whole conversation, ask at least one gameplay question covering the "
+        "goal and how to play, using the 'goal'/'steps' fields as the correct answer.\n"
+        "- Across the whole conversation, ask at least one question about what materials "
+        "or equipment the game needs, using the 'materials' field as the correct answer.\n"
         "- Across the whole conversation, ask at least one challenge question about how "
         "to make the game easier or harder for a child's needs, using the 'easier'/'harder'/"
         "'difficulty_levels' fields in the reference data as the correct answer.\n"
@@ -740,18 +721,36 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
             "field as the correct answer.\n"
             if game.get("variations") else ""
         )
+        + (
+            f"- Across the whole conversation, also ask at least one question about what "
+            f"skill(s) this game helps children build — the correct answer is: "
+            f"{', '.join(skill_names)}. Phrase it naturally (e.g. \"what skill do you think "
+            f"this game helps children build?\"), never mention the raw code.\n"
+            if skill_names else ""
+        )
+        + (
+            "- Across the whole conversation, also ask ONE debrief-style reflection question, "
+            "picked from (or closely adapted from) this list: "
+            + " / ".join(debrief_questions) + ". Unlike the other questions, there is no single "
+            "right answer here — treat any thoughtful, genuine reflection as satisfying this, "
+            "even if it differs from what you might expect.\n"
+            if debrief_questions else ""
+        )
         + "- Ask only ONE question at a time, short and natural to say out loud (it will be "
         "read by text-to-speech) — do not list multiple questions.\n"
         "- Never repeat a question already listed above, and never ask a generic filler "
         "question like 'can you tell me more' — always name the specific thing you want "
         "(a missing step, a specific material, the group size, the easier/harder answer, "
-        "or a variation).\n"
+        "a variation, a skill, or a debrief reflection).\n"
         "- If you cannot think of a new, specific, non-repetitive question — because the "
         "trainee has already covered the goal, steps, materials, an easier/harder answer"
-        + (", and a variation" if game.get("variations") else "")
+        + (", a variation" if game.get("variations") else "")
+        + (", a skill" if skill_names else "")
+        + (", and a debrief reflection" if debrief_questions else "")
         + " — finalize instead of asking anything further, even before the max turn.\n"
         "- Target the biggest gap or error first (missing step, wrong material, wrong group "
-        "size/goal, a wrong/missing easier-harder answer, or an uncovered variation).\n"
+        "size/goal, a wrong/missing easier-harder answer, an uncovered variation, a missing "
+        "skill answer, or a missing debrief reflection).\n"
         "- When finalizing, score five criteria as 1 (met) or 0 (not met):\n"
         "  1. age_appropriateness — this is NOT just about materials/pacing. The trainee must have "
         "actually pitched the explanation AS IF speaking directly to the children themselves (simple, "

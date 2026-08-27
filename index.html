@@ -152,7 +152,7 @@ function categoryGames(){ return (window.GAMES||[]).filter(g=>g.category===TRAIN
 
 const GAME_ICONS={'match-me':'🎯','colour-flip':'🎨','shape-stitch':'🧵','shape-fusion':'🔷','cue-cards':'✏️','artventure':'🎲','imagine-that':'💭','doodle-dash':'⚡','art-gym-book':'📖'};
 function gameIcon(id){ return GAME_ICONS[id]||'🧩'; }
-const GAME_PHOTOS={'match-me':'images/games/match-me.jpg','colour-flip':'images/games/colour-flip.jpg','shape-stitch':'images/games/shape-stitch.jpg','shape-fusion':'images/games/shape-fusion.jpg','cue-cards':'images/games/cue-cards.jpg','artventure':'images/games/artventure.jpg','imagine-that':'images/games/imagine-that.jpg','doodle-dash':'images/games/doodle-dash.jpg','art-gym-book':'images/games/art-gym-book.jpg'};
+const GAME_PHOTOS={'match-me':'images/games/match-me.jpg','colour-flip':'images/games/colour-flip.jpg','shape-stitch':'images/games/shape-stitch.jpg','shape-fusion':'images/games/shape-fusion.jpg','cue-cards':'images/games/cue-cards.jpg','artventure':'images/games/artventure.jpg','imagine-that':'images/games/imagine-that.jpg','doodle-dash':'images/games/doodle-dash.jpg','art-gym-book':'images/games/art-gym-book.jpg','every-body-says':'images/games/every-body-says.jpg','whats-that-sound':'images/games/whats-that-sound.jpg','script-flip':'images/games/script-flip.jpg','tale-trail':'images/games/tale-trail.jpg','shuffle':'images/games/shuffle.jpg','body-talk':'images/games/body-talk.jpg','watch-your-step':'images/games/watch-your-step.jpg','train-of-thoughts':'images/games/train-of-thoughts.jpg','guess-me':'images/games/guess-me.jpg','spaggle':'images/games/spaggle.jpg','pitch-perfect':'images/games/pitch-perfect.jpg','speech-a-palooza':'images/games/speech-a-palooza.jpg','improv-survival':'images/games/improv-survival.jpg','debate-duel':'images/games/debate-duel.jpg'};
 
 // artwork tab thumbnail — a palette + brush, in the same flat/rounded style as the mascot
 function artworkThumbSVG(size){
@@ -243,8 +243,7 @@ async function renderChecklist(){
     root.appendChild(empty);
   }
 
-  const grid=document.createElement('div'); grid.className='game-grid';
-  games.forEach(g=>{
+  function buildGameTile(g){
     const rec=latest[g.id];
     const count=attempts[g.id]||0;
     const canReattempt=rec && count<MAX_ATTEMPTS_PER_GAME;
@@ -270,9 +269,34 @@ async function renderChecklist(){
       done.textContent='both attempts used';
       body.appendChild(done);
     }
-    grid.appendChild(tile);
-  });
-  root.appendChild(grid);
+    return tile;
+  }
+
+  const SECTION_ORDER=['roll-call','playground','showtime'];
+  const SECTION_LABELS={'roll-call':'Roll Call','playground':'Playground','showtime':'Showtime'};
+  const hasSections=games.some(g=>g.section);
+  if(hasSections){
+    const sections=[...SECTION_ORDER, ...new Set(games.map(g=>g.section).filter(s=>s && !SECTION_ORDER.includes(s)))];
+    sections.forEach(sec=>{
+      const secGames=games.filter(g=>g.section===sec);
+      if(!secGames.length) return;
+      const title=document.createElement('div'); title.className='game-section-title'; title.textContent=SECTION_LABELS[sec]||sec;
+      root.appendChild(title);
+      const grid=document.createElement('div'); grid.className='game-grid';
+      secGames.forEach(g=>grid.appendChild(buildGameTile(g)));
+      root.appendChild(grid);
+    });
+    const unsectioned=games.filter(g=>!g.section);
+    if(unsectioned.length){
+      const grid=document.createElement('div'); grid.className='game-grid';
+      unsectioned.forEach(g=>grid.appendChild(buildGameTile(g)));
+      root.appendChild(grid);
+    }
+  } else {
+    const grid=document.createElement('div'); grid.className='game-grid';
+    games.forEach(g=>grid.appendChild(buildGameTile(g)));
+    root.appendChild(grid);
+  }
 
   if(doneCount>0 && !TRAINEE.approved){
     const note=document.createElement('div'); note.className='muted'; note.style.cssText='font-size:12.5px;margin-bottom:10px';
@@ -339,7 +363,9 @@ async function renderArtwork(){
     root.appendChild(title);
     const grid=document.createElement('div'); grid.className='artwork-grid';
     for(let unit=1; unit<=ARTWORK_UNITS; unit++){
-      const entry=(MY_ARTWORK[band.key]||{})[String(unit)];
+      const raw=(MY_ARTWORK[band.key]||{})[String(unit)];
+      const versions=Array.isArray(raw)?raw:(raw?[raw]:[]);
+      const entry=versions.length?versions[versions.length-1]:null; // most recent submission
       const needsRedo=(MY_ARTWORK_REDO[band.key]||[]).includes(unit);
       const slot=document.createElement('div'); slot.className='artwork-slot'+(entry?' filled':'')+(needsRedo?' needs-redo':'');
       const thumb=document.createElement('div'); thumb.className='artwork-slot-thumb';
@@ -349,15 +375,15 @@ async function renderArtwork(){
       const label=document.createElement('div'); label.style.cssText='font-weight:700;font-size:12.5px'; label.textContent='unit '+unit;
       slot.appendChild(label);
       const status=document.createElement('div'); status.className='muted'; status.style.cssText='font-size:11px;min-height:14px;margin:3px 0';
-      if(entry) status.textContent='✓ submitted';
-      else if(needsRedo){ status.textContent='🔁 please redo this one'; status.style.color='#B3261E'; status.style.fontWeight='700'; }
+      if(needsRedo){ status.textContent='🔁 please redo this one'; status.style.color='#B3261E'; status.style.fontWeight='700'; }
+      else if(entry) status.textContent='✓ submitted';
       else status.textContent='';
       slot.appendChild(status);
-      if(!entry){
+      if(!entry || needsRedo){
         const fileInput=document.createElement('input'); fileInput.type='file'; fileInput.accept='image/jpeg,image/png,.pdf'; fileInput.style.display='none';
         const btnRow=document.createElement('div'); btnRow.style.cssText='display:flex;gap:5px';
         const upBtn=document.createElement('button'); upBtn.className='ghost'; upBtn.style.cssText='flex:1;font-size:11.5px;padding:6px 4px';
-        upBtn.textContent='upload';
+        upBtn.textContent=entry?'resubmit':'upload';
         upBtn.onclick=()=>fileInput.click();
         btnRow.appendChild(upBtn);
         slot.appendChild(btnRow);
@@ -417,7 +443,8 @@ async function uploadArtworkSlot(ageBand, unit, file, statusEl, btnEl){
 
 function startGame(game){
   STATE.game=game;
-  STATE.ageBand=Math.random()<0.5?'5–8':'8–12';
+  const allowedBands=(game.age_bands && game.age_bands.length) ? game.age_bands : ['5–8','8–12'];
+  STATE.ageBand=allowedBands[Math.floor(Math.random()*allowedBands.length)];
   STATE.history=[];
   STATE.finalResult=null;
   reviewMode=false; liveText=''; listening=false;

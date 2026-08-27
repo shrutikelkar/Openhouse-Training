@@ -884,14 +884,24 @@ async function artworkTab(){
       const units=(entry && entry.artwork && entry.artwork[band])||{};
       const redoUnits=(entry && entry.redo && entry.redo[band])||[];
       for(let u=1; u<=ARTWORK_UNITS; u++){
-        const f=units[String(u)];
+        const raw=units[String(u)];
+        const versions=Array.isArray(raw)?raw:(raw?[raw]:[]);
         const divider=(bandIdx===1 && u===1)?DIVIDER:'';
+        const flagged=redoUnits.includes(u);
         let cell;
-        if(f){
-          cell='<a href="'+esc(f.url||'#')+'" target="_blank" rel="noopener" title="'+esc(f.filename||'')+'">✓</a> '
-            +'<span class="ghost" style="cursor:pointer;font-size:10px;padding:1px 5px;border-radius:6px" '
-            +'data-redo-phone="'+esc(tr.phone)+'" data-redo-band="'+esc(band)+'" data-redo-unit="'+u+'" title="ask '+esc(tr.name||'')+' to redo this one">↺</span>';
-        } else if(redoUnits.includes(u)){
+        if(versions.length){
+          const links=versions.map((v,i)=>{
+            const isCurrent=i===versions.length-1;
+            const label=isCurrent && versions.length>1?'<b>'+(i+1)+'</b>':String(i+1);
+            const title=esc(v.filename||'')+(isCurrent?' (current)':' (replaced)');
+            return '<a href="'+esc(v.url||'#')+'" target="_blank" rel="noopener" title="'+title+'">'+label+'</a>';
+          }).join(' ');
+          cell=(versions.length>1?links:'<a href="'+esc(versions[0].url||'#')+'" target="_blank" rel="noopener" title="'+esc(versions[0].filename||'')+'">✓</a>')+' '
+            +(flagged
+              ? '<span style="color:#B3261E" title="redo requested — waiting for resubmission">🔁</span>'
+              : '<span class="ghost" style="cursor:pointer;font-size:10px;padding:1px 5px;border-radius:6px" '
+                +'data-redo-phone="'+esc(tr.phone)+'" data-redo-band="'+esc(band)+'" data-redo-unit="'+u+'" title="ask '+esc(tr.name||'')+' to redo this one">↺</span>');
+        } else if(flagged){
           cell='<span style="color:#B3261E" title="redo requested — waiting for resubmission">🔁</span>';
         } else {
           cell='<span class="muted">—</span>';
@@ -909,7 +919,7 @@ async function artworkTab(){
   tableEl.querySelectorAll('[data-redo-phone]').forEach(el=>{
     el.onclick=async()=>{
       const phone=el.dataset.redoPhone, ageBand=el.dataset.redoBand, unit=el.dataset.redoUnit;
-      if(!confirm('Ask this trainee to redo unit '+unit+' (ages '+ageBand.replace('-','–')+')? This removes their current submission for that unit.')) return;
+      if(!confirm('Ask this trainee to redo unit '+unit+' (ages '+ageBand.replace('-','–')+')? Their current submission stays visible until they upload a new one.')) return;
       try{
         const r=await fetch(API+'/api/admin/artwork/redo',{method:'POST',
           headers:{'Content-Type':'application/json','Authorization':'Bearer '+t},
