@@ -1,3 +1,11 @@
+@font-face{font-family:Avenir;src:url("fonts/AvenirNextRoundedStd-Reg.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:Avenir;src:url("fonts/AvenirNextRoundedStd-Italic.woff2") format("woff2");font-weight:400;font-style:italic;font-display:swap}
+@font-face{font-family:Avenir;src:url("fonts/AvenirNextRoundedStd-Med.woff2") format("woff2");font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:Avenir;src:url("fonts/AvenirNextRoundedStd-MedIt.woff2") format("woff2");font-weight:500;font-style:italic;font-display:swap}
+@font-face{font-family:Avenir;src:url("fonts/AvenirNextRoundedStd-Demi.woff2") format("woff2");font-weight:600;font-style:normal;font-display:swap}
+@font-face{font-family:Avenir;src:url("fonts/AvenirNextRoundedStd-DemiIt.woff2") format("woff2");font-weight:600;font-style:italic;font-display:swap}
+@font-face{font-family:Avenir;src:url("fonts/AvenirNextRoundedStd-Bold.woff2") format("woff2");font-weight:700 900;font-style:normal;font-display:swap}
+@font-face{font-family:Avenir;src:url("fonts/AvenirNextRoundedStd-BoldIt.woff2") format("woff2");font-weight:700 900;font-style:italic;font-display:swap}
 :root{
   --cream:#FAF3EA; --subtle:#FDF9F3; --ink:#2C2B28; --muted:#6b675f; --line:#ecdfd0;
   --coral:#EF5C34; --coral-dark:#CE4520; --coral-tint:#FDECE5;
