@@ -1049,7 +1049,7 @@ function render(){
   root.innerHTML='';
 
   const tabBar=document.createElement('div'); tabBar.className='tabs';
-  [{id:'responses',label:'Responses'},{id:'trainees',label:'Trainees'},{id:'artwork',label:'Artwork'},{id:'accuracy',label:'Scores'},{id:'charts',label:'Charts'}].forEach(t=>{
+  [{id:'responses',label:'Responses'},{id:'trainees',label:'Trainees'},{id:'accuracy',label:'Scores'},{id:'charts',label:'Charts'},{id:'artwork',label:'Artwork'}].forEach(t=>{
     const b=document.createElement('button'); b.className='tab'+(ACTIVE_TAB===t.id?' active':''); b.textContent=t.label;
     b.onclick=()=>{ ACTIVE_TAB=t.id; render(); };
     tabBar.appendChild(b);
