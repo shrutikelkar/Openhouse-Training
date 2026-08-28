@@ -72,8 +72,8 @@ ARTWORK_MAX_BYTES = 8 * 1024 * 1024  # 8MB per file
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
-EXPLAIN_MIN_TURNS = 2
-EXPLAIN_MAX_TURNS = 5
+EXPLAIN_MIN_TURNS = 3
+EXPLAIN_MAX_TURNS = 6
 
 SMTP_EMAIL = os.environ.get("SMTP_EMAIL")
 SMTP_APP_PASSWORD = os.environ.get("SMTP_APP_PASSWORD")
@@ -681,6 +681,26 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
     scenarios = game.get("scenarios") or []
     facts = game.get("facts") or []
 
+    # Just a count for the prompt's own reference — coverage of each topic (debrief
+    # especially) is guaranteed by the explicit rules below, not by turn-count math.
+    required_topics = 2  # goal/steps + materials are always required
+    if has_challenge:
+        required_topics += 1
+    if lanyard_skills:
+        required_topics += 1
+    if scenarios:
+        required_topics += 1
+    if facts:
+        required_topics += 1
+    if game.get("variations"):
+        required_topics += 1
+    if skill_names:
+        required_topics += 1
+    if debrief_questions:
+        required_topics += 1
+    min_turns = EXPLAIN_MIN_TURNS
+    max_turns = EXPLAIN_MAX_TURNS
+
     if age_band in ("5–8", "5-8"):
         age_example_rule = (
             "Since the age band here is 5-8, they must ALSO give at least one concrete worked "
@@ -709,9 +729,19 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
             if prior_questions else ""
         )
         + "Rules:\n"
-        f"- The trainee must answer at least {EXPLAIN_MIN_TURNS} turns before you finalize.\n"
-        f"- You must finalize by turn {EXPLAIN_MAX_TURNS} no matter what.\n"
-        "- Before you pick your next question, first re-read everything the trainee has "
+        f"- The trainee must answer at least {min_turns} turns before you finalize — this game "
+        f"has {required_topics} mandatory topics (listed below), so do not finalize early just "
+        "because the conversation feels sufficient; every one of them needs its own question "
+        "unless the trainee's own words already nailed it.\n"
+        f"- You must finalize by turn {max_turns} no matter what.\n"
+        + (
+            "- A debrief question is NOT something a trainee would organically include while "
+            "narrating game mechanics to children — it is a distinct reflective question about "
+            "how they'd talk to a child afterwards. Never treat it as \"already covered\" by the "
+            "initial explanation; it always needs its own dedicated question before you finalize.\n"
+            if debrief_questions else ""
+        )
+        + "- Before you pick your next question, first re-read everything the trainee has "
         "already said — including their very first explanation, not just the latest turn — "
         "against the reference data. The topic list below describes what must be COVERED "
         "across the whole conversation, not a fixed script to work through regardless of "
@@ -751,10 +781,11 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
             if scenarios else ""
         )
         + (
-            "- Across the whole conversation, ask the trainee ONE fact-check question for EACH "
-            "entry in the reference data's 'facts' list (e.g. whether it's ever okay to skip using "
-            "lanyards, and whether every child can be given the same lanyard) and check their "
-            "answer against that fact — do not skip any of them.\n"
+            "- Across the whole conversation, ask the trainee at least one fact-check question "
+            "drawn from the reference data's 'facts' list (e.g. whether it's ever okay to skip "
+            "using lanyards, or whether every child can be given the same lanyard) and check their "
+            "answer against that fact. The list is general reference material to draw from, not a "
+            "checklist you must ask about item by item.\n"
             if facts else ""
         )
         + (
@@ -874,7 +905,7 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
     # rather than let the conversation loop. Below the minimum, swap in a
     # concrete, distinct fallback question instead of retrying the same prompt.
     if result.get("action") == "ask" and _is_repeat_question(result.get("question", ""), prior_questions):
-        if trainee_turns >= EXPLAIN_MIN_TURNS:
+        if trainee_turns >= min_turns:
             finalize_system = system + (
                 "\n\nYou just tried to ask a question that repeats one already asked. "
                 "There is nothing new left to probe — finalize now with scores and reasoning "
@@ -900,12 +931,12 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
             fresh = next((q for q in fallback_pool if not _is_repeat_question(q, prior_questions)), None)
             result = {"action": "ask", "question": fresh or fallback_pool[0]}
 
-    if trainee_turns < EXPLAIN_MIN_TURNS and result.get("action") != "ask":
+    if trainee_turns < min_turns and result.get("action") != "ask":
         result = {
             "action": "ask",
             "question": f"What's the very first thing you'd tell the children to do to set up {game_name}?",
         }
-    if trainee_turns >= EXPLAIN_MAX_TURNS and result.get("action") != "final":
+    if trainee_turns >= max_turns and result.get("action") != "final":
         result = {
             "action": "final",
             "scores": {"age_appropriateness": 0, "clarity": 0, "gameplay_accuracy": 0, "challenge_accuracy": 0, "genuine": 0},
