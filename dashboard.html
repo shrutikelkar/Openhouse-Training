@@ -24,7 +24,8 @@
 const TK='oh_explain_token';
 const root=document.getElementById('root');
 const API=(window.location.protocol==='file:'||window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:8000':'';
-let ALL=[], TRAINEES=[], ACTIVE_TAB='trainees', GAME_FILTER='', TRAINEE_FILTER='', CATEGORY_FILTER='', ADD_TRAINEE_MODE='single';
+let ALL=[], TRAINEES=[], ACTIVE_TAB='trainees', GAME_FILTER='', TRAINEE_FILTER='', CATEGORY_FILTER='', ADD_TRAINEE_MODE='single', ARTWORK_VIEW='art-design';
+const ART35_COLLECTIONS_ADMIN={artiverse:{label:'Artiverse', slots:['Paper','Crayon','Paint']}, artistotle:{label:'Artistotle', slots:['Eric Carle','Lois Ehlert','Taro Gomi']}};
 const CATEGORIES=['art-design','public-speaking','robotics','music','chess','art-3-5','storytelling-3-5','stem-3-5'];
 const CATEGORY_LABELS={'art-design':'Art & Design','public-speaking':'Public Speaking','robotics':'Robotics','music':'Music','chess':'Chess','art-3-5':'Art (3–5)','storytelling-3-5':'Language Through Storytelling (3–5)','stem-3-5':'STEM (3–5)'};
 function catLabel(c){ return CATEGORY_LABELS[c]||c; }
@@ -261,6 +262,11 @@ function recordsView(list){
     html+='<span class="pill" style="margin-left:4px">'+total+'/5</span>';
     html+='</div>';
     if(r.reasoning) html+='<div class="txt"><span class="lab">admin-only scoring notes</span>'+esc(r.reasoning)+'</div>';
+    if(r.grammar_notes&&r.grammar_notes.length){
+      let gn='<div class="txt"><span class="lab">🔤 grammar notes (admin-only — never shown to the trainee)</span>';
+      r.grammar_notes.forEach(note=>{ gn+='<div style="margin-bottom:4px">'+esc(note)+'</div>'; });
+      html+=gn+'</div>';
+    }
     if(r.strengths) html+='<div class="txt" style="background:var(--sage-tint)"><span class="lab">✅ what they did well</span>'+esc(r.strengths)+'</div>';
     if(r.improvements&&r.improvements.length){
       let imp='<div class="txt" style="background:var(--coral-tint)"><span class="lab">🎯 what to improve</span>';
@@ -315,7 +321,7 @@ function csvEscape(v){
 function downloadRecordsCSV(list){
   const cols=['trainee_name','trainee_phone','game_name','category','cohort','age_band','received_at',
     'age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine','total_score',
-    'strengths','improvements','new_idea','reasoning'];
+    'strengths','improvements','new_idea','reasoning','grammar_notes'];
   const criteriaLabels={age_appropriateness:'Age fit',clarity:'Clarity',gameplay_accuracy:'Gameplay accuracy',challenge_accuracy:'Challenge accuracy',genuine:'Genuine'};
   const rows=list.map(r=>{
     const s=r.scores||{};
@@ -325,7 +331,8 @@ function downloadRecordsCSV(list){
       cohort:r.cohort, age_band:r.age_band, received_at:r.received_at,
       age_appropriateness:s.age_appropriateness?1:0, clarity:s.clarity?1:0, gameplay_accuracy:s.gameplay_accuracy?1:0,
       challenge_accuracy:s.challenge_accuracy?1:0, genuine:s.genuine?1:0, total_score:scoreTotal(r),
-      strengths:r.strengths||'', improvements:improvementsStr, new_idea:r.new_idea||'', reasoning:r.reasoning||''
+      strengths:r.strengths||'', improvements:improvementsStr, new_idea:r.new_idea||'', reasoning:r.reasoning||'',
+      grammar_notes:(r.grammar_notes||[]).join(' ;; ')
     };
     return cols.map(c=>csvEscape(vals[c])).join(',');
   });
@@ -942,12 +949,21 @@ function ynBadge(pct){
 }
 
 async function artworkTab(){
+  const modeRow=document.createElement('div'); modeRow.style.cssText='display:flex;gap:8px;margin-bottom:14px';
+  const adBtn=document.createElement('button'); adBtn.className='tab'+(ARTWORK_VIEW==='art-design'?' active':''); adBtn.textContent='Art & Design';
+  adBtn.onclick=()=>{ ARTWORK_VIEW='art-design'; render(); };
+  const a35Btn=document.createElement('button'); a35Btn.className='tab'+(ARTWORK_VIEW==='art-3-5'?' active':''); a35Btn.textContent='Art 3-5';
+  a35Btn.onclick=()=>{ ARTWORK_VIEW='art-3-5'; render(); };
+  modeRow.append(adBtn,a35Btn);
+  root.appendChild(modeRow);
+
   const t=localStorage.getItem(TK);
   const loading=document.createElement('div'); loading.className='empty'; loading.textContent='loading artwork…';
   root.appendChild(loading);
+  const endpoint = ARTWORK_VIEW==='art-3-5' ? '/api/admin/artwork35' : '/api/admin/artwork';
   let data=[];
   try{
-    const r=await fetch(API+'/api/admin/artwork',{headers:{'Authorization':'Bearer '+t}});
+    const r=await fetch(API+endpoint,{headers:{'Authorization':'Bearer '+t}});
     data = r.ok ? await r.json() : [];
   }catch(e){}
   loading.remove();
@@ -956,11 +972,9 @@ async function artworkTab(){
   const byPhone={};
   data.forEach(entry=>{ byPhone[entry.phone]=entry; });
 
-  // artwork is only ever submitted by art-design trainees (enforced server-side
-  // too) — this view is always scoped to that category, no toggle needed.
   const filterRow=document.createElement('div'); filterRow.style.cssText='display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center';
   const scopeNote=document.createElement('span'); scopeNote.className='muted'; scopeNote.style.fontSize='12.5px';
-  scopeNote.textContent='showing art-design trainees only';
+  scopeNote.textContent='showing '+(ARTWORK_VIEW==='art-3-5'?'art-3-5':'art-design')+' trainees only';
   filterRow.appendChild(scopeNote);
   if(TRAINEE_FILTER){
     const pill=document.createElement('span'); pill.className='pill coral';
@@ -972,7 +986,7 @@ async function artworkTab(){
   if(clearBtn) clearBtn.onclick=()=>{ TRAINEE_FILTER=''; render(); };
 
   const rows=TRAINEES
-    .filter(tr=>traineeCategories(tr).includes('art-design'))
+    .filter(tr=>traineeCategories(tr).includes(ARTWORK_VIEW))
     .filter(tr=>!TRAINEE_FILTER||tr.name===TRAINEE_FILTER)
     .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
 
@@ -981,6 +995,8 @@ async function artworkTab(){
     root.appendChild(empty);
     return;
   }
+
+  if(ARTWORK_VIEW==='art-3-5'){ renderArtwork35Table(rows, byPhone, t); return; }
 
   const DIVIDER='border-left:3px solid var(--coral);';
   const unitHeaderRow=withDivider=>Array.from({length:ARTWORK_UNITS},(_,i)=>'<th'+(withDivider&&i===0?' style="'+DIVIDER+'"':'')+'>u'+(i+1)+'</th>').join('');
@@ -1035,6 +1051,70 @@ async function artworkTab(){
         const r=await fetch(API+'/api/admin/artwork/redo',{method:'POST',
           headers:{'Content-Type':'application/json','Authorization':'Bearer '+t},
           body:JSON.stringify({phone, age_band:ageBand, unit:Number(unit)})});
+        const d=await r.json();
+        if(!r.ok) throw new Error(d.detail||'could not send redo request');
+        render();
+      }catch(e){ alert(e.message||'could not send redo request'); }
+    };
+  });
+}
+
+function renderArtwork35Table(rows, byPhone, t){
+  const DIVIDER='border-left:3px solid var(--coral);';
+  const collKeys=Object.keys(ART35_COLLECTIONS_ADMIN);
+  let html='<div class="table-wrap"><table class="sum-table"><thead>'
+    +'<tr><th rowspan="2">name</th>'
+    +collKeys.map((ck,i)=>'<th colspan="'+ART35_COLLECTIONS_ADMIN[ck].slots.length+'" style="text-align:center;'+(i>0?DIVIDER:'')+'">'+esc(ART35_COLLECTIONS_ADMIN[ck].label)+'</th>').join('')
+    +'</tr><tr>'
+    +collKeys.map((ck,i)=>ART35_COLLECTIONS_ADMIN[ck].slots.map((s,j)=>'<th'+(i>0&&j===0?' style="'+DIVIDER+'"':'')+'>'+esc(s)+'</th>').join('')).join('')
+    +'</tr></thead><tbody>';
+  rows.forEach(tr=>{
+    const entry=byPhone[tr.phone];
+    html+='<tr><td><b>'+esc(tr.name||tr.phone)+'</b></td>';
+    collKeys.forEach((ck,collIdx)=>{
+      const slotData=(entry && entry.artwork35 && entry.artwork35[ck])||{};
+      const redoSlots=(entry && entry.redo && entry.redo[ck])||[];
+      ART35_COLLECTIONS_ADMIN[ck].slots.forEach((slotName,slotIdx)=>{
+        const raw=slotData[slotName];
+        const versions=Array.isArray(raw)?raw:(raw?[raw]:[]);
+        const divider=(collIdx>0 && slotIdx===0)?DIVIDER:'';
+        const flagged=redoSlots.includes(slotName);
+        let cell;
+        if(versions.length){
+          const links=versions.map((v,i)=>{
+            const isCurrent=i===versions.length-1;
+            const label=isCurrent && versions.length>1?'<b>'+(i+1)+'</b>':String(i+1);
+            const title=esc(v.artwork_name||v.filename||'')+(isCurrent?' (current)':' (replaced)');
+            return '<a href="'+esc(v.url||'#')+'" target="_blank" rel="noopener" title="'+title+'">'+label+'</a>';
+          }).join(' ');
+          cell=(versions.length>1?links:'<a href="'+esc(versions[0].url||'#')+'" target="_blank" rel="noopener" title="'+esc(versions[0].artwork_name||versions[0].filename||'')+'">✓</a>')+' '
+            +(flagged
+              ? '<span style="color:#B3261E" title="redo requested — waiting for resubmission">🔁</span>'
+              : '<span class="ghost" style="cursor:pointer;font-size:10px;padding:1px 5px;border-radius:6px" '
+                +'data-redo35-phone="'+esc(tr.phone)+'" data-redo35-collection="'+esc(ck)+'" data-redo35-slot="'+esc(slotName)+'" title="ask '+esc(tr.name||'')+' to redo this one">↺</span>');
+        } else if(flagged){
+          cell='<span style="color:#B3261E" title="redo requested — waiting for resubmission">🔁</span>';
+        } else {
+          cell='<span class="muted">—</span>';
+        }
+        html+='<td style="text-align:center;'+divider+'">'+cell+'</td>';
+      });
+    });
+    html+='</tr>';
+  });
+  html+='</tbody></table></div>';
+  const wrap=document.createElement('div'); wrap.innerHTML=html;
+  const tableEl=wrap.firstElementChild;
+  root.appendChild(tableEl);
+
+  tableEl.querySelectorAll('[data-redo35-phone]').forEach(el=>{
+    el.onclick=async()=>{
+      const phone=el.dataset.redo35Phone, collection=el.dataset.redo35Collection, slot=el.dataset.redo35Slot;
+      if(!confirm('Ask this trainee to redo "'+slot+'" ('+ART35_COLLECTIONS_ADMIN[collection].label+')? Their current submission stays visible until they upload a new one.')) return;
+      try{
+        const r=await fetch(API+'/api/admin/artwork35/redo',{method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+t},
+          body:JSON.stringify({phone, collection, slot})});
         const d=await r.json();
         if(!r.ok) throw new Error(d.detail||'could not send redo request');
         render();

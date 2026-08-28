@@ -53,7 +53,7 @@ document.getElementById('headerMascot').innerHTML=mascotSVG(48);
 let TRAINEE={ name:'', phone:'', category:'', categories:[], cohort:'', approved:false };
 let MY_RECORDS=[];
 let STATE={ game:null, ageBand:null, history:[], finalResult:null };
-let mediaRecorder=null, mediaStream=null, listening=false, liveText='', reviewMode=false, originalTranscript='';
+let mediaRecorder=null, mediaStream=null, listening=false, liveText='', reviewMode=false, originalTranscript='', recordingTimer=null;
 
 function authHeader(){ return {'Authorization':'Bearer '+localStorage.getItem(TK)}; }
 
@@ -179,7 +179,7 @@ function gameIconSVG(id, size){
   return '<svg viewBox="0 0 100 100" width="'+size+'" height="'+size+'" xmlns="http://www.w3.org/2000/svg">'
     +'<rect x="2" y="2" width="96" height="96" rx="26" fill="#FFF7EE"/>'+inner+'</svg>';
 }
-const GAME_PHOTOS={'match-me':'images/games/match-me.jpg','colour-flip':'images/games/colour-flip.jpg','shape-stitch':'images/games/shape-stitch.jpg','shape-fusion':'images/games/shape-fusion.jpg','cue-cards':'images/games/cue-cards.jpg','artventure':'images/games/artventure.jpg','imagine-that':'images/games/imagine-that.jpg','doodle-dash':'images/games/doodle-dash.jpg','art-gym-book':'images/games/art-gym-book.jpg','every-body-says':'images/games/every-body-says.jpg','whats-that-sound':'images/games/whats-that-sound.jpg','script-flip':'images/games/script-flip.jpg','tale-trail':'images/games/tale-trail.jpg','shuffle':'images/games/shuffle.jpg','body-talk':'images/games/body-talk.jpg','watch-your-step':'images/games/watch-your-step.jpg','train-of-thoughts':'images/games/train-of-thoughts.jpg','guess-me':'images/games/guess-me.jpg','spaggle':'images/games/spaggle.jpg','pitch-perfect':'images/games/pitch-perfect.jpg','speech-a-palooza':'images/games/speech-a-palooza.jpg','improv-survival':'images/games/improv-survival.jpg','debate-duel':'images/games/debate-duel.jpg','skill-lanyards':'images/games/skill-lanyards.jpg'};
+const GAME_PHOTOS={'match-me':'images/games/match-me.jpg','colour-flip':'images/games/colour-flip.jpg','shape-stitch':'images/games/shape-stitch.jpg','shape-fusion':'images/games/shape-fusion.jpg','cue-cards':'images/games/cue-cards.jpg','artventure':'images/games/artventure.jpg','imagine-that':'images/games/imagine-that.jpg','doodle-dash':'images/games/doodle-dash.jpg','art-gym-book':'images/games/art-gym-book.jpg','every-body-says':'images/games/every-body-says.jpg','whats-that-sound':'images/games/whats-that-sound.jpg','script-flip':'images/games/script-flip.jpg','tale-trail':'images/games/tale-trail.jpg','shuffle':'images/games/shuffle.jpg','body-talk':'images/games/body-talk.jpg','watch-your-step':'images/games/watch-your-step.jpg','train-of-thoughts':'images/games/train-of-thoughts.jpg','guess-me':'images/games/guess-me.jpg','spaggle':'images/games/spaggle.jpg','pitch-perfect':'images/games/pitch-perfect.jpg','speech-a-palooza':'images/games/speech-a-palooza.jpg','improv-survival':'images/games/improv-survival.jpg','debate-duel':'images/games/debate-duel.jpg','skill-lanyards':'images/games/skill-lanyards.jpg','art-gym-book-3-5':'images/games/art-gym-book-3-5.jpg','scribble-book':'images/games/scribble-book.jpg','candy-sort':'images/games/candy-sort.jpg','dot-grid':'images/games/dot-grid.jpg','every-body-says-3-5':'images/games/every-body-says-3-5.jpg','guess-me-3-5':'images/games/guess-me-3-5.jpg','i-shop-texture-3-5':'images/games/i-shop-texture-3-5.jpg','i-spy-3-5':'images/games/i-spy-3-5.jpg','imagine-playground':'images/games/imagine-playground.jpg','language-wheel-3-5':'images/games/language-wheel-3-5.jpg','logical-road-builder':'images/games/logical-road-builder.jpg','magna-tiles':'images/games/magna-tiles.jpg','mix-it-up-3-5':'images/games/mix-it-up-3-5.jpg','rhyme-house-3-5':'images/games/rhyme-house-3-5.jpg','stitch-me':'images/games/stitch-me.jpg','story-cube-3-5':'images/games/story-cube-3-5.jpg','swat-it-snap-it-3-5':'images/games/swat-it-snap-it-3-5.jpg','whats-that-sound-3-5':'images/games/whats-that-sound-3-5.jpg','colour-friends-3-5':'images/games/colour-friends-3-5.jpg','story-construction':'images/games/story-construction.jpg'};
 
 // artwork tab thumbnail — a palette + brush, in the same flat/rounded style as the mascot
 function artworkThumbSVG(size){
@@ -198,10 +198,13 @@ function scoreTotal(s){ return ['age_appropriateness','clarity','gameplay_accura
 const CRITERIA_LABELS={age_appropriateness:'age fit',clarity:'clarity',gameplay_accuracy:'gameplay accuracy',challenge_accuracy:'challenge accuracy',genuine:'genuine'};
 
 const MAX_ATTEMPTS_PER_GAME=2; // original attempt + exactly one re-attempt
+const MAX_RECORDING_MS=3*60*1000; // keeps transcription well within the 60s serverless timeout
 
 const ARTWORK_AGE_BANDS=[{key:'5-8',label:'ages 5–8'},{key:'8-12',label:'ages 8–12'}];
 const ARTWORK_UNITS=10;
 let MY_ARTWORK={};
+const ART35_COLLECTIONS={artiverse:{label:'Artiverse', slots:['Paper','Crayon','Paint']}, artistotle:{label:'Artistotle', slots:['Eric Carle','Lois Ehlert','Taro Gomi']}};
+let MY_ARTWORK35={}, MY_ARTWORK35_REDO={};
 
 function tabBar(active){
   const bar=document.createElement('div'); bar.className='tab-bar';
@@ -211,6 +214,11 @@ function tabBar(active){
   if(TRAINEE.category==='art-design'){
     const artBtn=document.createElement('button'); artBtn.className='tab-btn'+(active==='artwork'?' active':''); artBtn.textContent='🎨 artwork';
     artBtn.onclick=()=>{ if(active!=='artwork') renderArtwork(); };
+    bar.appendChild(artBtn);
+  }
+  if(TRAINEE.category==='art-3-5'){
+    const artBtn=document.createElement('button'); artBtn.className='tab-btn'+(active==='artwork'?' active':''); artBtn.textContent='🎨 artwork';
+    artBtn.onclick=()=>{ if(active!=='artwork') renderArtwork35(); };
     bar.appendChild(artBtn);
   }
   return bar;
@@ -499,16 +507,165 @@ async function uploadArtworkSlot(ageBand, unit, file, statusEl, btnEl){
   }
 }
 
+async function fetchMyArtwork35(){
+  try{
+    const r=await fetch(API+'/api/artwork35/mine',{headers:authHeader()});
+    if(r.status===401){ localStorage.removeItem(TK); loginView('Session expired — sign in again.'); return false; }
+    const d=r.ok ? await r.json() : {};
+    MY_ARTWORK35 = d.artwork35||{};
+    MY_ARTWORK35_REDO = d.redo||{};
+  }catch(e){ MY_ARTWORK35={}; MY_ARTWORK35_REDO={}; }
+  return true;
+}
+
+async function renderArtwork35(){
+  document.body.classList.remove('login-bg');
+  root.innerHTML='<div class="empty">loading…</div>';
+  const ok=await fetchMyArtwork35();
+  if(!ok) return;
+
+  root.innerHTML='';
+  const head=document.createElement('div'); head.className='card';
+  head.innerHTML='<div style="display:flex;align-items:center;gap:14px;margin-bottom:12px">'
+      +'<div style="flex:none">'+artworkThumbSVG(56)+'</div>'
+      +'<div style="font-weight:800;font-size:18px">your artwork</div>'
+    +'</div>'
+    +'<div class="muted" style="font-size:13px;line-height:1.6">Hello 👋<br><br>'
+      +'Upload one artwork for each slot below, and give it a name. '
+      +'The maximum file size is 8 MB and the accepted formats are JPG, PNG and PDF.</div>';
+  root.appendChild(head);
+  root.appendChild(tabBar('artwork'));
+
+  Object.keys(ART35_COLLECTIONS).forEach((collKey,collIdx)=>{
+    const coll=ART35_COLLECTIONS[collKey];
+    if(collIdx>0){ const divider=document.createElement('hr'); divider.className='artwork-band-divider'; root.appendChild(divider); }
+    const title=document.createElement('div'); title.className='artwork-band-title'; title.textContent=coll.label;
+    root.appendChild(title);
+    const grid=document.createElement('div'); grid.className='artwork-grid';
+    coll.slots.forEach(slotName=>{
+      const raw=(MY_ARTWORK35[collKey]||{})[slotName];
+      const versions=Array.isArray(raw)?raw:(raw?[raw]:[]);
+      const entry=versions.length?versions[versions.length-1]:null; // most recent submission
+      const needsRedo=(MY_ARTWORK35_REDO[collKey]||[]).includes(slotName);
+      const slot=document.createElement('div'); slot.className='artwork-slot'+(entry?' filled':'')+(needsRedo?' needs-redo':'');
+      const thumb=document.createElement('div'); thumb.className='artwork-slot-thumb';
+      if(entry && entry.content_type && entry.content_type.startsWith('image/')) thumb.innerHTML='<img src="'+esc(entry.url)+'" alt="">';
+      else thumb.textContent=entry?'📄':'🖼️';
+      slot.appendChild(thumb);
+      const label=document.createElement('div'); label.style.cssText='font-weight:700;font-size:12.5px'; label.textContent=slotName;
+      slot.appendChild(label);
+      const status=document.createElement('div'); status.className='muted'; status.style.cssText='font-size:11px;min-height:14px;margin:3px 0';
+      if(needsRedo){ status.textContent='🔁 please redo this one'; status.style.color='#B3261E'; status.style.fontWeight='700'; }
+      else if(entry) status.textContent='✓ '+(entry.artwork_name||'submitted');
+      else status.textContent='';
+      slot.appendChild(status);
+      if(!entry || needsRedo){
+        const nameInput=document.createElement('input'); nameInput.type='text'; nameInput.placeholder='name of the artwork';
+        nameInput.style.cssText='font-size:11.5px;padding:6px 8px;margin-bottom:5px';
+        const fileInput=document.createElement('input'); fileInput.type='file'; fileInput.accept='image/jpeg,image/png,.pdf'; fileInput.style.display='none';
+        const btnRow=document.createElement('div'); btnRow.style.cssText='display:flex;gap:5px';
+        const upBtn=document.createElement('button'); upBtn.className='ghost'; upBtn.style.cssText='flex:1;font-size:11.5px;padding:6px 4px';
+        upBtn.textContent=entry?'resubmit':'upload';
+        upBtn.onclick=()=>fileInput.click();
+        btnRow.appendChild(upBtn);
+        slot.appendChild(nameInput);
+        slot.appendChild(btnRow);
+        slot.appendChild(fileInput);
+        fileInput.onchange=()=>{
+          const file=fileInput.files[0];
+          if(!file) return;
+          if(file.type!=='image/jpeg' && file.type!=='image/png' && file.type!=='application/pdf'){ status.textContent='please upload a JPG, PNG or PDF file'; status.style.color='#B3261E'; return; }
+          if(file.size > 8*1024*1024){ status.textContent='file too large (max 8MB)'; status.style.color='#B3261E'; return; }
+          status.style.color='';
+          const previewUrl=URL.createObjectURL(file);
+          if(file.type.startsWith('image/')) thumb.innerHTML='<img src="'+previewUrl+'" alt="">';
+          else thumb.textContent='📄';
+          status.textContent=esc(file.name)+' — not saved yet';
+          btnRow.innerHTML='';
+          const saveBtn=document.createElement('button'); saveBtn.className='btn'; saveBtn.style.cssText='flex:1;font-size:11.5px;padding:6px 4px';
+          saveBtn.textContent='save';
+          saveBtn.onclick=()=>{
+            if(!nameInput.value.trim()){ status.textContent='please give the artwork a name first'; status.style.color='#B3261E'; return; }
+            URL.revokeObjectURL(previewUrl); uploadArtwork35Slot(collKey, slotName, nameInput.value.trim(), file, status, saveBtn);
+          };
+          const cancelBtn=document.createElement('button'); cancelBtn.className='ghost'; cancelBtn.style.cssText='flex:none;font-size:11.5px;padding:6px 8px';
+          cancelBtn.textContent='cancel';
+          cancelBtn.onclick=()=>{ URL.revokeObjectURL(previewUrl); fileInput.value=''; renderArtwork35(); };
+          btnRow.append(saveBtn, cancelBtn);
+        };
+      }
+      grid.appendChild(slot);
+    });
+    root.appendChild(grid);
+  });
+
+  const actions=document.createElement('div'); actions.style.cssText='display:flex;gap:8px;margin-top:14px';
+  const signout=document.createElement('button'); signout.className='ghost'; signout.style.flex='none'; signout.textContent='sign out';
+  signout.onclick=()=>{ localStorage.removeItem(TK); localStorage.removeItem('oh_trainee_info'); loginView(); };
+  actions.appendChild(signout);
+  root.appendChild(actions);
+}
+
+async function uploadArtwork35Slot(collection, slot, artworkName, file, statusEl, btnEl){
+  if(file.type!=='image/jpeg' && file.type!=='image/png' && file.type!=='application/pdf'){ statusEl.textContent='please upload a JPG, PNG or PDF file'; statusEl.style.color='#B3261E'; return; }
+  if(file.size > 8*1024*1024){ statusEl.textContent='file too large (max 8MB)'; statusEl.style.color='#B3261E'; return; }
+  btnEl.disabled=true; const prevText=btnEl.textContent; btnEl.textContent='uploading…';
+  statusEl.style.color=''; statusEl.textContent='uploading…';
+  try{
+    const b64=await fileToBase64(file);
+    const r=await fetch(API+'/api/artwork35/upload',{
+      method:'POST', headers:{'Content-Type':'application/json', ...authHeader()},
+      body:JSON.stringify({collection:collection, slot:slot, artwork_name:artworkName, file:b64, filename:file.name, content_type:file.type||'application/octet-stream'})
+    });
+    const d=await r.json();
+    if(!r.ok) throw new Error(d.detail||'upload failed');
+    MY_ARTWORK35=d.artwork35;
+    renderArtwork35();
+  }catch(e){
+    statusEl.textContent=e.message||'upload failed'; statusEl.style.color='#B3261E';
+    btnEl.disabled=false; btnEl.textContent=prevText;
+  }
+}
+
 function startGame(game){
+  // A game can bundle several named sub-projects instead of one fixed
+  // goal/steps — the trainee picks which one to explain, then everything
+  // downstream (quiz, scoring, saved record) treats the merged result as
+  // an ordinary single-project game tagged with the parent game's id.
+  if(game.projects && game.projects.length){ renderProjectPicker(game); return; }
   STATE.game=game;
   const allowedBands=(game.age_bands && game.age_bands.length) ? game.age_bands : ['5–8','8–12'];
   STATE.ageBand=allowedBands[Math.floor(Math.random()*allowedBands.length)];
   STATE.history=[];
   STATE.finalResult=null;
   reviewMode=false; liveText=''; listening=false;
+  if(recordingTimer){ clearTimeout(recordingTimer); recordingTimer=null; }
   if(mediaRecorder && mediaRecorder.state!=='inactive'){ try{mediaRecorder.stop();}catch(e){} }
   if(mediaStream){ try{mediaStream.getTracks().forEach(t=>t.stop());}catch(e){} }
   renderIntro();
+}
+
+function renderProjectPicker(game){
+  document.body.classList.remove('login-bg');
+  root.innerHTML='';
+  const card=document.createElement('div'); card.className='card center';
+  card.innerHTML='<div class="mascot" style="margin:0 auto 6px">'+mascotSVG(56)+'</div>'
+    +'<span class="pill coral">'+esc(game.name)+'</span>'
+    +'<p style="margin-top:10px;font-size:13.5px" class="muted">pick one to explain:</p>';
+  game.projects.forEach(p=>{
+    const btn=document.createElement('button'); btn.className='btn'; btn.style.cssText='width:100%;margin-bottom:8px';
+    btn.textContent=p.name;
+    btn.onclick=()=>{
+      const effectiveGame=Object.assign({}, game, p, {id:game.id, category:game.category, section:game.section, age_bands:game.age_bands, name:game.name+' — '+p.name});
+      delete effectiveGame.projects;
+      startGame(effectiveGame);
+    };
+    card.appendChild(btn);
+  });
+  const back=document.createElement('button'); back.className='ghost'; back.style.cssText='width:100%;margin-top:4px'; back.textContent='← back to checklist';
+  back.onclick=renderChecklist;
+  card.appendChild(back);
+  root.appendChild(card);
 }
 
 function renderIntro(){
@@ -518,7 +675,7 @@ function renderIntro(){
     +'<span class="pill coral">'+esc(STATE.game.name)+'</span><span class="pill teal">ages '+esc(STATE.ageBand)+'</span>'
     +'<p style="margin-top:14px">Explain <b>'+esc(STATE.game.name)+'</b> out loud, as if you\'re briefing a group of children aged <b>'+esc(STATE.ageBand)+'</b>. Cover the goal, how to play, and how you\'d end it.</p>'
     +'<p style="font-weight:700;font-size:13.5px;color:var(--coral-dark)">Explain as you would to a child. Be clear and specific. Do not use any jargon.</p>'
-    +'<p class="muted" style="font-size:13px">Tap the mic, speak your explanation, then tap "submit answer" when you\'re done. There\'ll be a couple of follow-up questions after.</p>';
+    +'<p class="muted" style="font-size:13px">Tap the mic, speak your explanation, then tap "submit answer" when you\'re done. There\'ll be a couple of follow-up questions after. Each recording has a 3-minute limit — it\'ll stop and transcribe automatically if you reach it.</p>';
   const btn=document.createElement('button'); btn.className='btn'; btn.textContent='I\'m ready →';
   btn.onclick=()=>{ renderConversation(); };
   card.appendChild(btn);
@@ -649,8 +806,14 @@ async function toggleListening(){
   liveText='';
   const lt=document.getElementById('liveText'); if(lt) lt.textContent='🔴 listening… tap the mic again when you\'re done';
   const m=document.getElementById('micBtn'); if(m) m.classList.add('listening');
+  recordingTimer=setTimeout(()=>{
+    if(!listening) return;
+    const lt2=document.getElementById('liveText'); if(lt2) lt2.textContent='⏱ 3-minute limit reached — stopping and transcribing…';
+    stopListening();
+  }, MAX_RECORDING_MS);
 }
 function stopListening(){
+  if(recordingTimer){ clearTimeout(recordingTimer); recordingTimer=null; }
   if(mediaRecorder && mediaRecorder.state!=='inactive'){ try{mediaRecorder.stop();}catch(e){} }
   listening=false;
 }
@@ -755,7 +918,7 @@ function renderFinal(){
       const r=await fetch(API+'/api/explain/save',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},authHeader()),body:JSON.stringify({
         game_id:game.id, game_name:game.name, age_band:STATE.ageBand, trainee_name:TRAINEE.name, category:TRAINEE.category,
         history:STATE.history, scores:s, reasoning:STATE.finalResult.reasoning||'', new_idea:STATE.finalResult.new_idea||null,
-        strengths:STATE.finalResult.strengths||'', improvements:STATE.finalResult.improvements||[]
+        strengths:STATE.finalResult.strengths||'', improvements:STATE.finalResult.improvements||[], grammar_notes:STATE.finalResult.grammar_notes||[]
       })});
       if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not save'); }
       if(canRedo){ await fetchMyRecords(); startGame(game); }

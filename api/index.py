@@ -70,6 +70,14 @@ ARTWORK_AGE_BANDS = ["5-8", "8-12"]
 ARTWORK_UNITS = 10
 ARTWORK_MAX_BYTES = 8 * 1024 * 1024  # 8MB per file
 
+# Art 3-5's artwork portfolio is shaped differently from the age-band/unit grid
+# above — two named collections, each with a fixed set of named slots, and
+# every upload also carries a free-text artwork name/title.
+ART35_COLLECTIONS = {
+    "artiverse": ["Paper", "Crayon", "Paint"],
+    "artistotle": ["Eric Carle", "Lois Ehlert", "Taro Gomi"],
+}
+
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
 EXPLAIN_MIN_TURNS = 3
@@ -106,6 +114,18 @@ SKILL_LABELS = {
     "VS": "Vocal Skills",
     "BL": "Body Language",
     "C&S": "Content & Structure",
+    "FM": "Fine Motor",
+    "CO": "Colour",
+    "CE": "Creative Expression",
+    "LI": "Listening",
+    "SP": "Speaking",
+    "VO": "Vocabulary",
+    "RE": "Reading",
+    "WR": "Writing",
+    "LO": "Logic",
+    "PR": "Problem Solving",
+    "NS": "Number Sense",
+    "CU": "Curiosity",
 }
 
 app = FastAPI()
@@ -300,7 +320,7 @@ def _gemini_json(system: str, user_message: str) -> dict:
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with urllib.request.urlopen(req, timeout=45) as r:
             body = json.loads(r.read())
     except urllib.error.HTTPError as e:
         detail = e.read().decode(errors="replace")
@@ -348,7 +368,7 @@ def _gemini_transcribe(audio_b64: str, mime_type: str) -> str:
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with urllib.request.urlopen(req, timeout=45) as r:
             body = json.loads(r.read())
     except urllib.error.HTTPError as e:
         detail = e.read().decode(errors="replace")
@@ -670,6 +690,133 @@ async def admin_artwork_redo(req: Request, authorization: Optional[str] = Header
     return {"ok": True, "artwork": trainee.get("artwork") or {}, "redo": redo}
 
 
+# ---------- artwork uploads: Art 3-5 (Artiverse / Artistotle) ----------
+
+@app.post("/api/artwork35/upload")
+async def artwork35_upload(req: Request, authorization: Optional[str] = Header(None)):
+    """Uploads/replaces one Art 3-5 artwork slot (a collection + named slot) for
+    the signed-in trainee. Body: {collection, slot, artwork_name, file (base64),
+    filename, content_type}. Like the Art & Design uploads, each submission gets
+    its own timestamped pathname — a resubmission never overwrites or deletes
+    the previous file, it just becomes the one shown for that slot."""
+    role, phone = _check(authorization, {"trainee"})
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+    if "art-3-5" not in _trainee_categories(trainee):
+        raise HTTPException(403, "artwork uploads are only for the art 3-5 category")
+    b = await req.json()
+    collection = (b.get("collection") or "").strip()
+    slot = (b.get("slot") or "").strip()
+    artwork_name = (b.get("artwork_name") or "").strip()
+    filename = (b.get("filename") or "upload").strip()
+    content_type = (b.get("content_type") or "application/octet-stream").strip()
+    file_b64 = b.get("file") or ""
+    if collection not in ART35_COLLECTIONS:
+        raise HTTPException(400, f"collection must be one of {list(ART35_COLLECTIONS)}")
+    if slot not in ART35_COLLECTIONS[collection]:
+        raise HTTPException(400, f"slot must be one of {ART35_COLLECTIONS[collection]}")
+    if not artwork_name:
+        raise HTTPException(400, "artwork_name is required")
+    if not file_b64:
+        raise HTTPException(400, "no file provided")
+    if content_type not in ("image/jpeg", "image/png", "application/pdf"):
+        raise HTTPException(400, "file must be JPG, PNG or PDF")
+    try:
+        data = base64.b64decode(file_b64)
+    except Exception:
+        raise HTTPException(400, "invalid file data")
+    if len(data) > ARTWORK_MAX_BYTES:
+        raise HTTPException(400, "file too large (max 8MB)")
+
+    ext = os.path.splitext(filename)[1][:10]
+    pathname = f"artwork35/{phone}/{collection}/{slot}-{int(time.time() * 1000)}{ext}"
+    result = _blob_put(pathname, data, content_type)
+
+    artwork35 = trainee.get("artwork35") or {}
+    coll_entry = artwork35.get(collection) or {}
+    # each slot holds every submission ever made for it, oldest first — a
+    # resubmission appends rather than replaces, so nothing is ever lost
+    existing = coll_entry.get(slot)
+    history = existing if isinstance(existing, list) else ([existing] if existing else [])
+    history.append({
+        "url": result.get("url"),
+        "filename": filename,
+        "content_type": content_type,
+        "artwork_name": artwork_name,
+        "uploaded_at": time.strftime("%Y-%m-%d %H:%M"),
+    })
+    coll_entry[slot] = history
+    artwork35[collection] = coll_entry
+    trainee["artwork35"] = artwork35
+
+    # a resubmission clears any "please redo this one" flag staff put on it
+    redo = trainee.get("artwork35_redo") or {}
+    coll_redo = redo.get(collection) or []
+    if slot in coll_redo:
+        redo[collection] = [s for s in coll_redo if s != slot]
+        trainee["artwork35_redo"] = redo
+
+    _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
+    return {"ok": True, "artwork35": artwork35, "redo": trainee.get("artwork35_redo") or {}}
+
+
+@app.get("/api/artwork35/mine")
+async def artwork35_mine(authorization: Optional[str] = Header(None)):
+    role, phone = _check(authorization, {"trainee"})
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+    if "art-3-5" not in _trainee_categories(trainee):
+        raise HTTPException(403, "artwork uploads are only for the art 3-5 category")
+    return {"artwork35": trainee.get("artwork35") or {}, "redo": trainee.get("artwork35_redo") or {}}
+
+
+@app.get("/api/admin/artwork35")
+async def admin_artwork35(authorization: Optional[str] = Header(None)):
+    """Every trainee who has uploaded at least one Art 3-5 piece, or has a
+    pending redo request, for the dashboard's artwork view."""
+    _check(authorization, {"staff"})
+    trainees = _list_trainees()
+    return [
+        {
+            "phone": t.get("phone"), "name": t.get("name"), "categories": _trainee_categories(t),
+            "artwork35": t.get("artwork35") or {}, "redo": t.get("artwork35_redo") or {},
+        }
+        for t in trainees if t.get("artwork35") or t.get("artwork35_redo")
+    ]
+
+
+@app.post("/api/admin/artwork35/redo")
+async def admin_artwork35_redo(req: Request, authorization: Optional[str] = Header(None)):
+    """Staff asks a trainee to redo one Art 3-5 slot. The current submission is
+    left in place (still viewable) — only the flag is set, so the trainee sees
+    why; resubmitting via /api/artwork35/upload clears the flag automatically."""
+    _check(authorization, {"staff"})
+    b = await req.json()
+    phone = (b.get("phone") or "").strip()
+    collection = (b.get("collection") or "").strip()
+    slot = (b.get("slot") or "").strip()
+    if collection not in ART35_COLLECTIONS:
+        raise HTTPException(400, f"collection must be one of {list(ART35_COLLECTIONS)}")
+    if slot not in ART35_COLLECTIONS[collection]:
+        raise HTTPException(400, f"slot must be one of {ART35_COLLECTIONS[collection]}")
+
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+
+    redo = trainee.get("artwork35_redo") or {}
+    coll_redo = redo.get(collection) or []
+    if slot not in coll_redo:
+        coll_redo = coll_redo + [slot]
+    redo[collection] = coll_redo
+    trainee["artwork35_redo"] = redo
+
+    _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
+    return {"ok": True, "artwork35": trainee.get("artwork35") or {}, "redo": redo}
+
+
 # ---------- explanation quiz ----------
 
 @app.post("/api/explain/transcribe")
@@ -707,6 +854,7 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
     lanyard_skills = game.get("lanyard_skills") or []
     scenarios = game.get("scenarios") or []
     facts = game.get("facts") or []
+    is_public_speaking = game.get("category") == "public-speaking"
 
     # Just a count for the prompt's own reference — coverage of each topic (debrief
     # especially) is guaranteed by the explicit rules below, not by turn-count math.
@@ -728,7 +876,17 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
     min_turns = EXPLAIN_MIN_TURNS
     max_turns = EXPLAIN_MAX_TURNS
 
-    if age_band in ("5–8", "5-8"):
+    if age_band in ("3–5", "3-5"):
+        age_example_rule = (
+            "Since the age band here is 3-5, they must ALSO give at least one very concrete, simple "
+            "worked example using plain, tangible language a toddler could follow (e.g. \"like if you "
+            "pick a red bead, you put it on the red square\") — for children this young, any abstract "
+            "rule without a concrete example is NOT enough, score 0. Check this across the ENTIRE "
+            "conversation, not just their first turn — an example given in a follow-up answer counts "
+            "just as much. A described live demonstration that walks through a specific instance (not "
+            "just 'I'd demonstrate it') satisfies this too."
+        )
+    elif age_band in ("5–8", "5-8"):
         age_example_rule = (
             "Since the age band here is 5-8, they must ALSO give at least one concrete worked "
             "example (e.g. \"like if you pick a red bead, you put it on the red square\") — for "
@@ -739,7 +897,7 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
         )
     else:
         age_example_rule = (
-            "For this 8-12 band, a concrete example is a plus but not mandatory, as long as the "
+            f"For this {age_band} band, a concrete example is a plus but not mandatory, as long as the "
             "direct-address register is right."
         )
 
@@ -926,12 +1084,26 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
         "concrete example to use, a tone adjustment, simpler wording, a particular step to add — not a "
         'vague "explain more clearly">"}. Keep the tone constructive, never harsh, even though the '
         "reason is specific about the gap.\n\n"
-        "Respond with ONLY one JSON object, no other text, no markdown fences, in one of "
+        + (
+            "Additionally, since this is a public-speaking category game, include a \"grammar_notes\" "
+            "field: an array of specific grammar or language issues you noticed in the TRAINEE'S OWN "
+            "spoken English across the whole conversation (subject-verb agreement, tense, wrong word "
+            "choice, etc.) — NOT the reference material's wording, and NOT anything about the children's "
+            "hypothetical speech. Each entry should quote what they actually said and the correction, "
+            "e.g. \"said 'he don't understand' — should be 'he doesn't understand'\". This is for staff "
+            "coaching only: it is NEVER shown to the trainee and must NEVER affect any of the five scores "
+            "above, even if the grammar is poor. Empty array if you noticed nothing worth flagging. Only "
+            "include \"grammar_notes\" in the final action, not in ask.\n\n"
+            if is_public_speaking else ""
+        )
+        + "Respond with ONLY one JSON object, no other text, no markdown fences, in one of "
         "these two shapes:\n"
         '{"action":"ask","question":"..."}\n'
         'or\n'
         '{"action":"final","scores":{"age_appropriateness":0,"clarity":0,"gameplay_accuracy":0,"challenge_accuracy":0,"genuine":0},'
-        '"reasoning":"...","new_idea":null,"strengths":"...","improvements":[{"criterion":"...","reason":"...","fix":"..."}]}'
+        '"reasoning":"...","new_idea":null,"strengths":"...","improvements":[{"criterion":"...","reason":"...","fix":"..."}]'
+        + (',"grammar_notes":[]' if is_public_speaking else '')
+        + '}'
     )
     transcript = "\n".join(f"{h.get('role')}: {h.get('text','')}" for h in history)
     result = _gemini_json(system, transcript or "(no explanation given yet)")
@@ -988,6 +1160,7 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
         result.setdefault("strengths", "")
         result.setdefault("improvements", [])
         result.setdefault("suggestion", "")
+        result.setdefault("grammar_notes", [])
         # "timeout" means the conversation ran out of turns (a system limit, not a
         # genuineness judgement); anything else with genuine=0 is a real model call.
         result.setdefault("redo_reason", "not_genuine" if not result["scores"].get("genuine") else None)
@@ -1037,6 +1210,7 @@ async def explain_save(req: Request, authorization: Optional[str] = Header(None)
         "new_idea": b.get("new_idea") or None,
         "strengths": b.get("strengths") or "",
         "improvements": b.get("improvements") or [],
+        "grammar_notes": b.get("grammar_notes") or [],
     }
     _redis("LPUSH", EXPLAIN_LIST_KEY, json.dumps(rec, ensure_ascii=False))
     # A new response (first attempt or re-attempt) means the downloadable
