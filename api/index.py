@@ -732,7 +732,10 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
         age_example_rule = (
             "Since the age band here is 5-8, they must ALSO give at least one concrete worked "
             "example (e.g. \"like if you pick a red bead, you put it on the red square\") — for "
-            "young children, listing abstract rules without a concrete example is NOT enough, score 0."
+            "young children, listing abstract rules without a concrete example is NOT enough, score 0. "
+            "Check this across the ENTIRE conversation, not just their first turn — an example given "
+            "in a follow-up answer counts just as much. A described live demonstration that walks "
+            "through a specific instance (not just 'I'd demonstrate it') satisfies this too."
         )
     else:
         age_example_rule = (
@@ -863,6 +866,13 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
         + (", a wrong fact-check answer" if facts else "")
         + (", or a missing debrief reflection" if debrief_questions else "")
         + ").\n"
+        "- CRITICAL: you may only score a mandatory topic 0 for being 'not covered' if you "
+        "actually asked the trainee about it during this conversation (check the ALREADY ASKED "
+        "list above) and their answer was missing, vague, or wrong. If a mandatory topic hasn't "
+        "been asked about yet, you must ask about it before finalizing — never jump straight to "
+        "finalizing and marking it 0 just because the trainee didn't spontaneously bring it up "
+        "unprompted. The only exception is finalizing because you've reached the max turn — in "
+        "that case, and only that case, an unasked topic may be scored 0.\n"
         "- When finalizing, score five criteria as 1 (met) or 0 (not met):\n"
         "  1. age_appropriateness — this is NOT just about materials/pacing. The trainee must have "
         "actually pitched the explanation AS IF speaking directly to the children themselves (simple, "

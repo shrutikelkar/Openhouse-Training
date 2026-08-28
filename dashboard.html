@@ -24,7 +24,7 @@
 const TK='oh_explain_token';
 const root=document.getElementById('root');
 const API=(window.location.protocol==='file:'||window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:8000':'';
-let ALL=[], TRAINEES=[], ACTIVE_TAB='responses', GAME_FILTER='', TRAINEE_FILTER='', CATEGORY_FILTER='', ADD_TRAINEE_MODE='single';
+let ALL=[], TRAINEES=[], ACTIVE_TAB='trainees', GAME_FILTER='', TRAINEE_FILTER='', CATEGORY_FILTER='', ADD_TRAINEE_MODE='single';
 const CATEGORIES=['art-design','public-speaking','robotics','music','chess','art-3-5','storytelling-3-5','stem-3-5'];
 const CATEGORY_LABELS={'art-design':'Art & Design','public-speaking':'Public Speaking','robotics':'Robotics','music':'Music','chess':'Chess','art-3-5':'Art (3–5)','storytelling-3-5':'Language Through Storytelling (3–5)','stem-3-5':'STEM (3–5)'};
 function catLabel(c){ return CATEGORY_LABELS[c]||c; }
@@ -1049,7 +1049,7 @@ function render(){
   root.innerHTML='';
 
   const tabBar=document.createElement('div'); tabBar.className='tabs';
-  [{id:'responses',label:'Responses'},{id:'trainees',label:'Trainees'},{id:'accuracy',label:'Scores'},{id:'charts',label:'Charts'},{id:'artwork',label:'Artwork'}].forEach(t=>{
+  [{id:'trainees',label:'Trainees'},{id:'responses',label:'Responses'},{id:'accuracy',label:'Scores'},{id:'charts',label:'Charts'},{id:'artwork',label:'Artwork'}].forEach(t=>{
     const b=document.createElement('button'); b.className='tab'+(ACTIVE_TAB===t.id?' active':''); b.textContent=t.label;
     b.onclick=()=>{ ACTIVE_TAB=t.id; render(); };
     tabBar.appendChild(b);
