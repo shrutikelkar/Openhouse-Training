@@ -24,7 +24,11 @@
 const TK='oh_explain_token';
 const root=document.getElementById('root');
 const API=(window.location.protocol==='file:'||window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:8000':'';
-let ALL=[], TRAINEES=[], ACTIVE_TAB='responses', GAME_FILTER='', TRAINEE_FILTER='', CATEGORY_FILTER='';
+let ALL=[], TRAINEES=[], ACTIVE_TAB='responses', GAME_FILTER='', TRAINEE_FILTER='', CATEGORY_FILTER='', ADD_TRAINEE_MODE='single';
+const CATEGORIES=['art-design','public-speaking','robotics','music','chess','art-3-5','storytelling-3-5','stem-3-5'];
+const CATEGORY_LABELS={'art-design':'Art & Design','public-speaking':'Public Speaking','robotics':'Robotics','music':'Music','chess':'Chess','art-3-5':'Art (3–5)','storytelling-3-5':'Language Through Storytelling (3–5)','stem-3-5':'STEM (3–5)'};
+function catLabel(c){ return CATEGORY_LABELS[c]||c; }
+function traineeCategories(t){ return (t.categories&&t.categories.length)?t.categories:(t.category?[t.category]:[]); }
 const ARTWORK_AGE_BANDS=['5-8','8-12'];
 const ARTWORK_UNITS=10;
 let LAST_BULK_ADD_RESULT=null; // survives the re-render that follows a bulk add, so the summary is actually visible
@@ -245,7 +249,7 @@ function recordsView(list){
     html+='<span class="pill coral">'+esc(r.game_name||'')+'</span>';
     html+='<span class="pill teal">ages '+esc(r.age_band||'?')+'</span>';
     if(isReattempt) html+='<span class="pill" style="background:#FDE9C8;color:#8a5a00;border-color:transparent">↻ re-attempt</span>';
-    if(r.category) html+='<span class="pill">'+esc(r.category)+'</span>';
+    if(r.category) html+='<span class="pill">'+esc(catLabel(r.category))+'</span>';
     if(r.cohort) html+='<span class="pill">'+fmtDate(r.cohort)+'</span>';
     html+='<span class="muted" style="font-size:12px;margin-left:auto">'+esc(r.received_at||'')+'</span>';
     html+='</div>';
@@ -336,10 +340,11 @@ function downloadRecordsCSV(list){
 }
 
 function downloadScoresCSV(){
-  const names=[...new Set(ALL.map(r=>r.trainee_name).filter(Boolean))].filter(n=>!TRAINEE_FILTER||n===TRAINEE_FILTER).sort();
+  const scoped=ALL.filter(r=>!CATEGORY_FILTER||r.category===CATEGORY_FILTER);
+  const names=[...new Set(scoped.map(r=>r.trainee_name).filter(Boolean))].filter(n=>!TRAINEE_FILTER||n===TRAINEE_FILTER).sort();
   const cols=['trainee_name','category','checks','age_fit_pct','clarity_pct','gameplay_accuracy_pct','challenge_accuracy_pct','genuine_pct','reattempts'];
   const rows=names.map(name=>{
-    const recs=ALL.filter(r=>r.trainee_name===name);
+    const recs=scoped.filter(r=>r.trainee_name===name);
     const pct=(key)=>{ const scored=recs.filter(r=>(r.scores||{})[key]!==undefined); return scored.length?Math.round(100*scored.filter(r=>r.scores[key]).length/scored.length):''; };
     const byGame={}; recs.forEach(r=>{ byGame[r.game_id]=(byGame[r.game_id]||0)+1; });
     const reattemptCount=Object.values(byGame).filter(n=>n>1).length;
@@ -361,13 +366,13 @@ function downloadScoresCSV(){
 }
 
 function responsesTab(){
-  const categories=[...new Set(ALL.map(r=>r.category).filter(Boolean))].sort();
+  const categories=[...new Set(ALL.map(r=>r.category).filter(Boolean))].sort((a,b)=>catLabel(a).localeCompare(catLabel(b)));
   const games=[...new Set(ALL.filter(r=>!CATEGORY_FILTER||r.category===CATEGORY_FILTER).map(r=>r.game_name).filter(Boolean))].sort();
   if(GAME_FILTER && !games.includes(GAME_FILTER)) GAME_FILTER='';
 
   const filterRow=document.createElement('div'); filterRow.className='filters';
   filterRow.innerHTML='<span style="font-weight:800;font-size:13px;color:var(--teal)">Filter</span>'
-    +(categories.length?'<select id="category-select"><option value="">All categories</option>'+categories.map(c=>'<option value="'+esc(c)+'"'+(c===CATEGORY_FILTER?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select>':'')
+    +(categories.length?'<select id="category-select"><option value="">All categories</option>'+categories.map(c=>'<option value="'+esc(c)+'"'+(c===CATEGORY_FILTER?' selected':'')+'>'+esc(catLabel(c))+'</option>').join('')+'</select>':'')
     +'<select id="game-select"><option value="">All games</option>'+games.map(g=>'<option value="'+esc(g)+'"'+(g===GAME_FILTER?' selected':'')+'>'+esc(g)+'</option>').join('')+'</select>'
     +(TRAINEE_FILTER?'<span class="pill coral">trainee: '+esc(TRAINEE_FILTER)+' <span style="cursor:pointer" id="clear-trainee-filter">✕</span></span>':'')
     +'<button class="ghost" id="download-csv" style="margin-left:auto">⬇ download CSV</button>';
@@ -430,18 +435,83 @@ function responsesTab(){
   });
 }
 
-function categoryGameCount(category){
-  return (window.GAMES||[]).filter(g=>g.category===category).length;
+function categoryGameCount(categories){
+  const cats=Array.isArray(categories)?categories:[categories];
+  return (window.GAMES||[]).filter(g=>cats.includes(g.category)).length;
+}
+
+// A dropdown of checkboxes standing in for what used to be a single-select
+// category dropdown, so one trainee can be assigned to more than one category.
+// Categories are listed alphabetically by their display label.
+let MULTISELECT_GLOBAL_CLICK_BOUND=false;
+function categoryCheckboxGroup(){
+  const sorted=[...CATEGORIES].sort((a,b)=>catLabel(a).localeCompare(catLabel(b)));
+  const wrap=document.createElement('div'); wrap.className='multiselect'; wrap.style.cssText='position:relative;margin-bottom:8px';
+  const toggle=document.createElement('button'); toggle.type='button';
+  // Styled to match the plain input/select fields around it (border, radius,
+  // padding, font-size) rather than the pill-shaped .ghost/.btn buttons —
+  // it's a form field standing in for a dropdown, not an action button.
+  toggle.style.cssText='width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;'
+    +'border:1.5px solid #e3d8c8;border-radius:11px;padding:11px 13px;font-size:15px;background:#fff;cursor:pointer';
+  const toggleLabel=document.createElement('span'); toggleLabel.style.cssText='overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+  const caret=document.createElement('span'); caret.textContent='▾'; caret.style.cssText='flex:none;color:var(--muted)';
+  toggle.append(toggleLabel, caret);
+  const panel=document.createElement('div'); panel.className='multiselect-panel';
+  panel.style.cssText='display:none;position:absolute;top:100%;left:0;right:0;z-index:10;margin-top:4px;'
+    +'background:#fff;border:1.5px solid var(--line);border-radius:11px;padding:6px 10px;box-shadow:var(--shadow);'
+    +'max-height:240px;overflow-y:auto';
+  function updateToggleLabel(){
+    const checked=boxes.filter(b=>b.checked).map(b=>catLabel(b.value));
+    toggleLabel.textContent=checked.length?checked.join(', '):'select categories';
+    toggleLabel.style.color=checked.length?'var(--ink)':'var(--muted)';
+  }
+  const boxes=sorted.map(c=>{
+    const label=document.createElement('label'); label.style.cssText='display:flex;align-items:center;gap:8px;font-size:13px;padding:7px 2px;cursor:pointer';
+    const cb=document.createElement('input'); cb.type='checkbox'; cb.value=c;
+    // override the global input{width:100%;margin-bottom:8px} rule, which
+    // otherwise stretches the checkbox across the row and shoves its label away
+    cb.style.cssText='width:auto;flex:none;margin:0';
+    cb.addEventListener('change', updateToggleLabel);
+    label.append(cb, document.createTextNode(catLabel(c)));
+    panel.appendChild(label);
+    return cb;
+  });
+  updateToggleLabel();
+  toggle.onclick=(e)=>{ e.stopPropagation(); panel.style.display=panel.style.display==='none'?'block':'none'; };
+  wrap.append(toggle, panel);
+  // One delegated listener for every multiselect on the page, rather than one
+  // per instance — traineesTab() re-renders this component often, and a fresh
+  // document-level listener each time would leak.
+  if(!MULTISELECT_GLOBAL_CLICK_BOUND){
+    document.addEventListener('click', (e)=>{
+      document.querySelectorAll('.multiselect-panel').forEach(p=>{
+        if(p.style.display!=='none' && !p.parentElement.contains(e.target)) p.style.display='none';
+      });
+    });
+    MULTISELECT_GLOBAL_CLICK_BOUND=true;
+  }
+  wrap.getChecked=()=>boxes.filter(b=>b.checked).map(b=>b.value);
+  wrap.reset=()=>{ boxes.forEach(b=>b.checked=false); updateToggleLabel(); };
+  return wrap;
 }
 
 function traineesTab(){
+  const modeRow=document.createElement('div'); modeRow.style.cssText='display:flex;gap:8px;margin-bottom:14px';
+  const singleModeBtn=document.createElement('button'); singleModeBtn.className='tab'+(ADD_TRAINEE_MODE==='single'?' active':''); singleModeBtn.textContent='add a trainee';
+  singleModeBtn.onclick=()=>{ ADD_TRAINEE_MODE='single'; render(); };
+  const bulkModeBtn=document.createElement('button'); bulkModeBtn.className='tab'+(ADD_TRAINEE_MODE==='bulk'?' active':''); bulkModeBtn.textContent='add multiple trainees';
+  bulkModeBtn.onclick=()=>{ ADD_TRAINEE_MODE='bulk'; render(); };
+  modeRow.append(singleModeBtn,bulkModeBtn);
+  root.appendChild(modeRow);
+
   const formCard=document.createElement('div'); formCard.className='card';
   formCard.innerHTML='<div style="font-weight:800;font-size:16px;margin-bottom:10px">add a trainee</div>';
   const nm=document.createElement('input'); nm.placeholder='name';
   const ph=document.createElement('input'); ph.placeholder='phone number'; ph.type='tel';
   const em=document.createElement('input'); em.placeholder='email (optional — sends them their login)'; em.type='email';
-  const cat=document.createElement('select');
-  ['art-design','public-speaking','robotics','music','chess'].forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; cat.appendChild(o); });
+  const catFieldLabel=document.createElement('div'); catFieldLabel.className='muted'; catFieldLabel.style.cssText='font-size:12px;font-weight:700;margin:2px 0 4px';
+  catFieldLabel.textContent='categories (pick one or more)';
+  const cat=categoryCheckboxGroup();
   const cohLabel=document.createElement('div'); cohLabel.className='muted'; cohLabel.style.cssText='font-size:12px;font-weight:700;margin:2px 0 4px';
   cohLabel.textContent='cohort start date (also sets their PIN — day+month, DDMM)';
   const coh=document.createElement('input'); coh.type='date';
@@ -460,30 +530,33 @@ function traineesTab(){
   const ok=document.createElement('div'); ok.style.cssText='color:var(--sage);font-size:13px;margin-top:6px;display:none';
   const addBtn=document.createElement('button'); addBtn.className='btn'; addBtn.style.width='100%'; addBtn.textContent='add trainee';
   addBtn.onclick=async()=>{
+    const categories=cat.getChecked();
     if(!nm.value.trim()||!ph.value.trim()||!coh.value.trim()){ er.textContent='name, phone and cohort start date are required'; er.style.display='block'; return; }
+    if(!categories.length){ er.textContent='pick at least one category'; er.style.display='block'; return; }
     addBtn.disabled=true; addBtn.textContent='adding…'; ok.style.display='none';
     try{
       const r=await fetch(API+'/api/admin/trainees',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},{'Authorization':'Bearer '+localStorage.getItem(TK)}),
-        body:JSON.stringify({name:nm.value.trim(),phone:ph.value.trim(),category:cat.value,cohort:coh.value.trim(),email:em.value.trim()})});
+        body:JSON.stringify({name:nm.value.trim(),phone:ph.value.trim(),categories,cohort:coh.value.trim(),email:em.value.trim()})});
       const d=await r.json();
       if(!r.ok) throw new Error(d.detail||'could not add trainee');
       er.style.display='none';
       let msg='Trainee added — PIN is '+esc(d.trainee.pin)+'.';
       if(em.value.trim()) msg += d.email_sent ? ' Welcome email sent.' : ' Email could not be sent (check SMTP setup or the address).';
       ok.textContent=msg; ok.style.color = (em.value.trim() && !d.email_sent) ? 'var(--warn)' : 'var(--sage)'; ok.style.display='block';
-      nm.value=''; ph.value=''; em.value=''; coh.value=''; pinPreview.textContent='PIN: —';
+      nm.value=''; ph.value=''; em.value=''; coh.value=''; pinPreview.textContent='PIN: —'; cat.reset();
       await loadTrainees(); render();
     }catch(e){ er.textContent=e.message; er.style.display='block'; }
     addBtn.disabled=false; addBtn.textContent='add trainee';
   };
-  formCard.append(nm,ph,em,cat,cohLabel,coh,pinPreview,er,ok,addBtn);
-  root.appendChild(formCard);
+  formCard.append(nm,ph,em,catFieldLabel,cat,cohLabel,coh,pinPreview,er,ok,addBtn);
+  if(ADD_TRAINEE_MODE==='single') root.appendChild(formCard);
 
   const bulkCard=document.createElement('div'); bulkCard.className='card';
   bulkCard.innerHTML='<div style="font-weight:800;font-size:16px;margin-bottom:2px">add multiple trainees</div>'
-    +'<div class="muted" style="font-size:13px;margin-bottom:10px">for a whole cohort at once — same category and cohort date, one trainee per line below</div>';
-  const bulkCat=document.createElement('select');
-  ['art-design','public-speaking','robotics','music','chess'].forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; bulkCat.appendChild(o); });
+    +'<div class="muted" style="font-size:13px;margin-bottom:10px">for a whole cohort at once — same categories and cohort date, one trainee per line below</div>';
+  const bulkCatLabel=document.createElement('div'); bulkCatLabel.className='muted'; bulkCatLabel.style.cssText='font-size:12px;font-weight:700;margin:2px 0 4px';
+  bulkCatLabel.textContent='categories (pick one or more)';
+  const bulkCat=categoryCheckboxGroup();
   const bulkCohLabel=document.createElement('div'); bulkCohLabel.className='muted'; bulkCohLabel.style.cssText='font-size:12px;font-weight:700;margin:2px 0 4px';
   bulkCohLabel.textContent='cohort start date (also sets everyone\'s PIN — day+month, DDMM)';
   const bulkCoh=document.createElement('input'); bulkCoh.type='date';
@@ -503,6 +576,8 @@ function traineesTab(){
       const parts=line.split(',').map(p=>p.trim());
       return { name:parts[0]||'', phone:parts[1]||'', email:parts[2]||'' };
     });
+    const bulkCategories=bulkCat.getChecked();
+    if(!bulkCategories.length){ bulkEr.textContent='pick at least one category'; bulkEr.style.display='block'; return; }
     if(!bulkCoh.value.trim()){ bulkEr.textContent='cohort start date is required'; bulkEr.style.display='block'; return; }
     if(!rows.length){ bulkEr.textContent='add at least one trainee line'; bulkEr.style.display='block'; return; }
     const badRow=rows.find(r=>!r.name||!r.phone);
@@ -512,7 +587,7 @@ function traineesTab(){
     for(const row of rows){
       try{
         const r=await fetch(API+'/api/admin/trainees',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},{'Authorization':'Bearer '+localStorage.getItem(TK)}),
-          body:JSON.stringify({name:row.name,phone:row.phone,category:bulkCat.value,cohort:bulkCoh.value.trim(),email:row.email})});
+          body:JSON.stringify({name:row.name,phone:row.phone,categories:bulkCategories,cohort:bulkCoh.value.trim(),email:row.email})});
         const d=await r.json();
         if(!r.ok) throw new Error(d.detail||'could not add');
         outcomes.push({name:row.name, phone:row.phone, email:row.email, ok:true, pin:d.trainee.pin});
@@ -530,8 +605,8 @@ function traineesTab(){
     bulkResults.style.display='block';
     LAST_BULK_ADD_RESULT=null;
   }
-  bulkCard.append(bulkCat,bulkCohLabel,bulkCoh,bulkPinPreview,bulkLinesLabel,bulkLines,bulkEr,bulkBtn,bulkResults);
-  root.appendChild(bulkCard);
+  bulkCard.append(bulkCatLabel,bulkCat,bulkCohLabel,bulkCoh,bulkPinPreview,bulkLinesLabel,bulkLines,bulkEr,bulkBtn,bulkResults);
+  if(ADD_TRAINEE_MODE==='bulk') root.appendChild(bulkCard);
 
   const listCard=document.createElement('div'); listCard.className='card';
   let html='<div style="font-weight:800;font-size:16px;margin-bottom:10px">trainees — '+TRAINEES.length+'</div>';
@@ -540,9 +615,11 @@ function traineesTab(){
   } else {
     html+='<div class="table-wrap"><table class="sum-table"><thead><tr><th>Name</th><th>Phone</th><th>Category</th><th>Cohort</th><th>Progress</th><th>Assessment</th><th></th></tr></thead><tbody>';
     TRAINEES.forEach(t=>{
-      const total=categoryGameCount(t.category);
-      const done=new Set(ALL.filter(r=>r.trainee_phone===t.phone && r.category===t.category).map(r=>r.game_id)).size;
-      html+='<tr><td><b>'+esc(t.name)+'</b></td><td>'+esc(t.phone)+'</td><td>'+esc(t.category)+'</td><td>'+fmtDate(t.cohort)+'</td>'
+      const tcats=traineeCategories(t);
+      const total=categoryGameCount(tcats);
+      const done=new Set(ALL.filter(r=>r.trainee_phone===t.phone && tcats.includes(r.category)).map(r=>r.game_id)).size;
+      const catPills=tcats.map(c=>'<span class="pill" style="margin:1px">'+esc(catLabel(c))+'</span>').join('')||'—';
+      html+='<tr><td><b>'+esc(t.name)+'</b></td><td>'+esc(t.phone)+'</td><td>'+catPills+'</td><td>'+fmtDate(t.cohort)+'</td>'
         +'<td>'+(total?done+' / '+total:'no games yet')+'</td>'
         +'<td><button class="ghost" data-approve-phone="'+esc(t.phone)+'" data-approve-next="'+(t.approved?'false':'true')+'" style="'+(t.approved?'background:var(--sage-tint);color:var(--sage);border-color:transparent':'')+'">'+(t.approved?'✓ approved':'approve download')+'</button></td>'
         +'<td><button class="ghost" data-remove-phone="'+esc(t.phone)+'" data-remove-name="'+esc(t.name)+'" style="color:var(--stop)">remove</button></td></tr>';
@@ -703,20 +780,23 @@ function reattemptsView(){
 }
 
 function accuracyTab(){
+  const categories=[...new Set(ALL.map(r=>r.category).filter(Boolean))].sort((a,b)=>catLabel(a).localeCompare(catLabel(b)));
   const card=document.createElement('div'); card.className='card';
   let html='<div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:2px">'
     +'<div style="flex:1;min-width:200px"><div style="font-weight:800;font-size:16px">scores by trainee</div>'
-    +'<div class="muted" style="font-size:13px">every scored criterion, per trainee, across all recorded attempts</div></div>'
+    +'<div class="muted" style="font-size:13px">every scored criterion, per trainee, across all recorded attempts'+(CATEGORY_FILTER?' — filtered to '+esc(catLabel(CATEGORY_FILTER)):'')+'</div></div>'
+    +(categories.length?'<select id="accuracy-category-select"><option value="">All categories</option>'+categories.map(c=>'<option value="'+esc(c)+'"'+(c===CATEGORY_FILTER?' selected':'')+'>'+esc(catLabel(c))+'</option>').join('')+'</select>':'')
     +'<button class="ghost" id="download-scores-csv">⬇ download CSV</button></div><div style="margin-bottom:10px"></div>';
-  const names=[...new Set(ALL.map(r=>r.trainee_name).filter(Boolean))].filter(n=>!TRAINEE_FILTER||n===TRAINEE_FILTER).sort();
+  const scoped=ALL.filter(r=>!CATEGORY_FILTER||r.category===CATEGORY_FILTER);
+  const names=[...new Set(scoped.map(r=>r.trainee_name).filter(Boolean))].filter(n=>!TRAINEE_FILTER||n===TRAINEE_FILTER).sort();
   if(!names.length){
     html+='<div class="empty">'+(TRAINEE_FILTER?'No data yet for '+esc(TRAINEE_FILTER)+'.':'No data yet.')+'</div>';
   } else {
     html+='<div class="table-wrap"><table class="sum-table"><thead><tr><th>Trainee</th><th>Category</th><th>checks</th>'
       +'<th>age fit</th><th>clarity</th><th>gameplay accuracy</th><th>challenge accuracy</th><th>genuine</th><th>re-attempts</th></tr></thead><tbody>';
     names.forEach(name=>{
-      const recs=ALL.filter(r=>r.trainee_name===name);
-      const cat=recs[0].category||'—';
+      const recs=scoped.filter(r=>r.trainee_name===name);
+      const cat=[...new Set(recs.map(r=>r.category).filter(Boolean))].map(catLabel).join(', ')||'—';
       const pct=(key)=>{ const scored=recs.filter(r=>(r.scores||{})[key]!==undefined); return scored.length?Math.round(100*scored.filter(r=>r.scores[key]).length/scored.length):null; };
       const byGame={}; recs.forEach(r=>{ byGame[r.game_id]=(byGame[r.game_id]||0)+1; });
       const reattemptCount=Object.values(byGame).filter(n=>n>1).length;
@@ -734,6 +814,8 @@ function accuracyTab(){
   root.appendChild(card);
   const dlScores=document.getElementById('download-scores-csv');
   if(dlScores) dlScores.onclick=downloadScoresCSV;
+  const accCs=document.getElementById('accuracy-category-select');
+  if(accCs) accCs.onchange=()=>{ CATEGORY_FILTER=accCs.value; render(); };
 
   const reCard=document.createElement('div'); reCard.className='card';
   reCard.innerHTML=sect('Re-attempts — before vs after', reattemptsView());
@@ -787,16 +869,23 @@ function barChartSVG(values,opts){
 }
 
 function chartsTab(){
-  const filteredAll=ALL.filter(r=>!TRAINEE_FILTER||r.trainee_name===TRAINEE_FILTER);
+  const categories=[...new Set(ALL.map(r=>r.category).filter(Boolean))].sort((a,b)=>catLabel(a).localeCompare(catLabel(b)));
+  const byTrainee=ALL.filter(r=>!TRAINEE_FILTER||r.trainee_name===TRAINEE_FILTER);
+  const filteredAll=byTrainee.filter(r=>!CATEGORY_FILTER||r.category===CATEGORY_FILTER);
   const card=document.createElement('div'); card.className='card';
-  let html='<div style="font-weight:800;font-size:16px;margin-bottom:4px">score charts</div>'
-    +'<div class="muted" style="font-size:13px;margin-bottom:14px">pass rate per criterion — combined across all games, and broken down by game'+(TRAINEE_FILTER?' — filtered to '+esc(TRAINEE_FILTER):'')+'</div>'
+  let html='<div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:4px">'
+    +'<div style="flex:1;min-width:200px"><div style="font-weight:800;font-size:16px">score charts</div>'
+    +'<div class="muted" style="font-size:13px">pass rate per criterion — combined across all games, and broken down by game'+(TRAINEE_FILTER?' — filtered to '+esc(TRAINEE_FILTER):'')+(CATEGORY_FILTER?', category '+esc(catLabel(CATEGORY_FILTER)):'')+'</div></div>'
+    +(categories.length?'<select id="chart-category-select"><option value="">All categories</option>'+categories.map(c=>'<option value="'+esc(c)+'"'+(c===CATEGORY_FILTER?' selected':'')+'>'+esc(catLabel(c))+'</option>').join('')+'</select>':'')
+    +'</div>'
     +chartLegend();
 
   if(!filteredAll.length){
     html+='<div class="empty">No data yet'+(TRAINEE_FILTER?' for '+esc(TRAINEE_FILTER):'')+'.</div>';
     card.innerHTML=html;
     root.appendChild(card);
+    const ccsEmpty=document.getElementById('chart-category-select');
+    if(ccsEmpty) ccsEmpty.onchange=()=>{ CATEGORY_FILTER=ccsEmpty.value; render(); };
     return;
   }
 
@@ -804,6 +893,8 @@ function chartsTab(){
   html+=sect('All games combined — '+filteredAll.length+' checks',barChartSVG(combinedValues,{width:460}));
   card.innerHTML=html;
   root.appendChild(card);
+  const ccs=document.getElementById('chart-category-select');
+  if(ccs) ccs.onchange=()=>{ CATEGORY_FILTER=ccs.value; render(); };
 
   const gameNames={};
   filteredAll.forEach(r=>{ if(r.game_id) gameNames[r.game_id]=r.game_name||r.game_id; });
@@ -821,6 +912,26 @@ function chartsTab(){
     gh+='</div>';
     gridCard.innerHTML=gh;
     root.appendChild(gridCard);
+  }
+
+  // Category comparison — deliberately ignores CATEGORY_FILTER and always shows
+  // every category side by side, since narrowing to one would defeat the point
+  // of comparing them (still respects TRAINEE_FILTER, to compare one trainee's
+  // own categories against each other).
+  if(categories.length>1){
+    const catCard=document.createElement('div'); catCard.className='card';
+    let ch='<div class="section-title" style="margin-bottom:14px">by category</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:22px">';
+    categories.forEach(cName=>{
+      const list=byTrainee.filter(r=>r.category===cName);
+      if(!list.length) return;
+      const values=CRITERIA_KEYS.map(k=>({key:k,label:CRITERIA_CHART_LABELS[k],pct:pctFor(list,k),color:CHART_COLORS[k]}));
+      ch+='<div><div style="font-weight:800;font-size:13.5px;margin-bottom:8px">'+esc(catLabel(cName))+' <span class="muted" style="font-weight:600;font-size:11.5px">('+list.length+' check'+(list.length!==1?'s':'')+')</span></div>'
+        +barChartSVG(values,{width:340})+'</div>';
+    });
+    ch+='</div>';
+    catCard.innerHTML=ch;
+    root.appendChild(catCard);
   }
 }
 
@@ -861,7 +972,7 @@ async function artworkTab(){
   if(clearBtn) clearBtn.onclick=()=>{ TRAINEE_FILTER=''; render(); };
 
   const rows=TRAINEES
-    .filter(tr=>tr.category==='art-design')
+    .filter(tr=>traineeCategories(tr).includes('art-design'))
     .filter(tr=>!TRAINEE_FILTER||tr.name===TRAINEE_FILTER)
     .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
 

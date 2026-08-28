@@ -50,7 +50,7 @@ function progressRingSVG(pct, size){
 }
 document.getElementById('headerMascot').innerHTML=mascotSVG(48);
 
-let TRAINEE={ name:'', phone:'', category:'', cohort:'', approved:false };
+let TRAINEE={ name:'', phone:'', category:'', categories:[], cohort:'', approved:false };
 let MY_RECORDS=[];
 let STATE={ game:null, ageBand:null, history:[], finalResult:null };
 let mediaRecorder=null, mediaStream=null, listening=false, liveText='', reviewMode=false, originalTranscript='';
@@ -82,10 +82,10 @@ function loginView(msg){
       const r=await fetch(API+'/api/trainee/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:ph.value,name:nm.value,pin:pin.value})});
       const d=await r.json();
       if(!r.ok) throw new Error(d.detail||'Could not sign in.');
-      TRAINEE={ name:d.name, phone:d.phone, category:d.category, cohort:d.cohort };
+      TRAINEE={ name:d.name, phone:d.phone, category:d.category, categories:d.categories||(d.category?[d.category]:[]), cohort:d.cohort };
       localStorage.setItem(TK, d.token);
       localStorage.setItem('oh_trainee_info', JSON.stringify(TRAINEE));
-      renderChecklist();
+      enterApp();
     }catch(e){ er.textContent=e.message; er.style.display='block'; b.disabled=false; b.textContent='sign in →'; }
   }
   b.onclick=go; pin.addEventListener('keydown',e=>{if(e.key==='Enter')go();});
@@ -149,6 +149,9 @@ async function blobToWavBase64(blob){
 }
 
 function categoryGames(){ return (window.GAMES||[]).filter(g=>g.category===TRAINEE.category); }
+
+const CATEGORY_LABELS={'art-design':'Art & Design','public-speaking':'Public Speaking','robotics':'Robotics','music':'Music','chess':'Chess','art-3-5':'Art (3–5)','storytelling-3-5':'Language Through Storytelling (3–5)','stem-3-5':'STEM (3–5)'};
+function catLabel(c){ return CATEGORY_LABELS[c]||c; }
 
 const GAME_ICONS={'match-me':'🎯','colour-flip':'🎨','shape-stitch':'🧵','shape-fusion':'🔷','cue-cards':'✏️','artventure':'🎲','imagine-that':'💭','doodle-dash':'⚡','art-gym-book':'📖'};
 function gameIcon(id){ return GAME_ICONS[id]||'🧩'; }
@@ -235,8 +238,37 @@ async function fetchMyRecords(){
 async function fetchMyStatus(){
   try{
     const r=await fetch(API+'/api/trainee/status',{headers:authHeader()});
-    if(r.ok){ const d=await r.json(); TRAINEE.approved=!!d.approved; TRAINEE.category=d.category; TRAINEE.cohort=d.cohort; }
+    // NOTE: TRAINEE.category (the session's chosen category, for a trainee with
+    // more than one) is intentionally left untouched here — only enterApp()'s
+    // once-per-login category picker is allowed to set it, otherwise every
+    // "back to checklist" navigation would silently reset the trainee's choice.
+    if(r.ok){ const d=await r.json(); TRAINEE.approved=!!d.approved; TRAINEE.categories=d.categories||(d.category?[d.category]:[]); TRAINEE.cohort=d.cohort; }
   }catch(e){}
+}
+
+// Runs once per login/resume — resolves which category applies this session,
+// asking the trainee only when they're assigned to more than one.
+async function enterApp(){
+  await fetchMyStatus();
+  const cats=(TRAINEE.categories&&TRAINEE.categories.length)?TRAINEE.categories:(TRAINEE.category?[TRAINEE.category]:[]);
+  if(cats.length>1){ renderCategoryPicker(cats); }
+  else { TRAINEE.category=cats[0]||TRAINEE.category||''; renderChecklist(); }
+}
+
+function renderCategoryPicker(cats){
+  document.body.classList.remove('login-bg');
+  root.innerHTML='';
+  const card=document.createElement('div'); card.className='card center';
+  card.innerHTML='<div class="mascot" style="margin:0 auto 6px">'+mascotSVG(56)+'</div>'
+    +'<div style="font-weight:800;font-size:17px;margin-bottom:4px">hi, '+esc(TRAINEE.name||'')+'</div>'
+    +'<div class="muted" style="font-size:13.5px;margin-bottom:14px">which category are you working on today?</div>';
+  [...cats].sort((a,b)=>catLabel(a).localeCompare(catLabel(b))).forEach(c=>{
+    const btn=document.createElement('button'); btn.className='btn'; btn.style.cssText='width:100%;margin-bottom:8px';
+    btn.textContent=catLabel(c);
+    btn.onclick=()=>{ TRAINEE.category=c; renderChecklist(); };
+    card.appendChild(btn);
+  });
+  root.appendChild(card);
 }
 
 async function renderChecklist(){
@@ -256,7 +288,7 @@ async function renderChecklist(){
   head.innerHTML='<div style="display:flex;align-items:center;gap:14px">'
       +progressRingSVG(pct,64)
       +'<div style="flex:1"><div style="font-weight:800;font-size:18px;margin-bottom:2px">hi, '+esc(TRAINEE.name)+'</div>'
-      +'<div class="muted" style="font-size:13px">'+esc(TRAINEE.category)+(TRAINEE.cohort?' · '+esc(TRAINEE.cohort):'')+'</div></div>'
+      +'<div class="muted" style="font-size:13px">'+esc(catLabel(TRAINEE.category))+(TRAINEE.cohort?' · '+esc(TRAINEE.cohort):'')+'</div></div>'
     +'</div>'
     +'<div class="muted" style="font-size:13px;margin-top:10px">'+doneCount+' of '+games.length+' games completed. Every game is required — you can do them in any order. Each game allows one re-attempt.</div>';
   root.appendChild(head);
@@ -721,7 +753,7 @@ function renderFinal(){
     saveBtn.disabled=true; saveBtn.textContent='saving…';
     try{
       const r=await fetch(API+'/api/explain/save',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},authHeader()),body:JSON.stringify({
-        game_id:game.id, game_name:game.name, age_band:STATE.ageBand, trainee_name:TRAINEE.name,
+        game_id:game.id, game_name:game.name, age_band:STATE.ageBand, trainee_name:TRAINEE.name, category:TRAINEE.category,
         history:STATE.history, scores:s, reasoning:STATE.finalResult.reasoning||'', new_idea:STATE.finalResult.new_idea||null,
         strengths:STATE.finalResult.strengths||'', improvements:STATE.finalResult.improvements||[]
       })});
@@ -758,7 +790,7 @@ async function downloadAssessmentDocx(btn){
 
 const savedInfo=localStorage.getItem('oh_trainee_info');
 if(savedInfo){ try{ TRAINEE=JSON.parse(savedInfo); }catch(e){} }
-if(!localStorage.getItem(TK)) loginView(); else renderChecklist();
+if(!localStorage.getItem(TK)) loginView(); else enterApp();
 </script>
 </body>
 </html>

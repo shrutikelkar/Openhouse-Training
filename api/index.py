@@ -80,7 +80,20 @@ SMTP_APP_PASSWORD = os.environ.get("SMTP_APP_PASSWORD")
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 
-CATEGORIES = ["art-design", "public-speaking", "robotics", "music", "chess"]
+CATEGORIES = [
+    "art-design", "public-speaking", "robotics", "music", "chess",
+    "art-3-5", "storytelling-3-5", "stem-3-5",
+]
+
+
+def _trainee_categories(trainee: dict) -> list:
+    """A trainee can now be assigned more than one category. Older records only
+    ever had the singular 'category' field, so fall back to wrapping that."""
+    cats = trainee.get("categories")
+    if cats:
+        return cats
+    single = trainee.get("category")
+    return [single] if single else []
 
 # games-data.js tags each game with short skill codes (e.g. "L&T") — expanded
 # here so both the AI prompt and its questions use the real name, never the code.
@@ -371,11 +384,13 @@ async def trainee_login(req: Request):
     trainee = _get_trainee(phone)
     if not trainee or trainee.get("name", "").strip().lower() != name.lower() or not hmac.compare_digest(str(trainee.get("pin", "")), pin):
         raise HTTPException(401, "no match for that phone number, name and PIN")
+    categories = _trainee_categories(trainee)
     return {
         "token": _make_token("trainee", phone),
         "name": trainee.get("name"),
         "phone": phone,
-        "category": trainee.get("category"),
+        "category": categories[0] if categories else None,
+        "categories": categories,
         "cohort": trainee.get("cohort"),
         "approved": bool(trainee.get("approved")),
     }
@@ -383,15 +398,18 @@ async def trainee_login(req: Request):
 
 @app.get("/api/trainee/status")
 async def trainee_status(authorization: Optional[str] = Header(None)):
-    """Fresh approval/category/cohort status for the current trainee — used
-    to reflect an admin approving them without requiring a fresh login."""
+    """Fresh approval/categories/cohort status for the current trainee — used
+    to reflect an admin approving them (or changing their categories) without
+    requiring a fresh login."""
     role, sub = _check(authorization, {"trainee"})
     trainee = _get_trainee(sub)
     if not trainee:
         raise HTTPException(404, "trainee record not found")
+    categories = _trainee_categories(trainee)
     return {
         "name": trainee.get("name"),
-        "category": trainee.get("category"),
+        "category": categories[0] if categories else None,
+        "categories": categories,
         "cohort": trainee.get("cohort"),
         "approved": bool(trainee.get("approved")),
     }
@@ -405,10 +423,11 @@ def _send_welcome_email(to_email: str, trainee: dict, site_url: str) -> bool:
     never be blocked by an email problem."""
     if not SMTP_EMAIL or not SMTP_APP_PASSWORD or not to_email:
         return False
+    cats = _trainee_categories(trainee)
     body = (
         f"Hi {trainee['name']},\n\n"
         f"You've been added to Openhouse Playwise"
-        f"{' (' + trainee['category'] + ')' if trainee.get('category') else ''}.\n\n"
+        f"{' (' + ', '.join(cats) + ')' if cats else ''}.\n\n"
         f"Sign in here: {site_url}\n"
         f"Phone number: {trainee['phone']}\n"
         f"PIN: {trainee['pin']}\n\n"
@@ -436,12 +455,20 @@ async def add_trainee(req: Request, authorization: Optional[str] = Header(None))
     b = await req.json()
     phone = (b.get("phone") or "").strip()
     name = (b.get("name") or "").strip()
-    category = (b.get("category") or "").strip()
+    raw_categories = b.get("categories")
+    if raw_categories is None:
+        # back-compat with any caller still posting the old singular field
+        single = (b.get("category") or "").strip()
+        raw_categories = [single] if single else []
+    categories = list(dict.fromkeys(c.strip() for c in raw_categories if c and c.strip()))
     cohort = (b.get("cohort") or "").strip()
     email = (b.get("email") or "").strip()
     if not phone or not name or not cohort:
         raise HTTPException(400, "phone, name and cohort start date are required")
-    if category not in CATEGORIES:
+    if not categories:
+        raise HTTPException(400, "at least one category is required")
+    bad = [c for c in categories if c not in CATEGORIES]
+    if bad:
         raise HTTPException(400, f"category must be one of {CATEGORIES}")
     try:
         y, m, d = cohort.split("-")
@@ -453,7 +480,7 @@ async def add_trainee(req: Request, authorization: Optional[str] = Header(None))
     existing = _get_trainee(phone)
     rec = {
         "phone": phone, "name": name, "pin": pin,
-        "category": category, "cohort": cohort, "email": email,
+        "categories": categories, "category": categories[0], "cohort": cohort, "email": email,
         "approved": existing.get("approved", False) if existing else False,
         "added_at": existing.get("added_at") if existing else time.strftime("%Y-%m-%d %H:%M"),
     }
@@ -526,7 +553,7 @@ async def artwork_upload(req: Request, authorization: Optional[str] = Header(Non
     trainee = _get_trainee(phone)
     if not trainee:
         raise HTTPException(404, "trainee not found")
-    if trainee.get("category") != "art-design":
+    if "art-design" not in _trainee_categories(trainee):
         raise HTTPException(403, "artwork uploads are only for the art & design category")
     b = await req.json()
     age_band = (b.get("age_band") or "").strip()
@@ -589,7 +616,7 @@ async def artwork_mine(authorization: Optional[str] = Header(None)):
     trainee = _get_trainee(phone)
     if not trainee:
         raise HTTPException(404, "trainee not found")
-    if trainee.get("category") != "art-design":
+    if "art-design" not in _trainee_categories(trainee):
         raise HTTPException(403, "artwork uploads are only for the art & design category")
     return {"artwork": trainee.get("artwork") or {}, "redo": trainee.get("artwork_redo") or {}}
 
@@ -602,7 +629,7 @@ async def admin_artwork(authorization: Optional[str] = Header(None)):
     trainees = _list_trainees()
     return [
         {
-            "phone": t.get("phone"), "name": t.get("name"), "category": t.get("category"),
+            "phone": t.get("phone"), "name": t.get("name"), "categories": _trainee_categories(t),
             "artwork": t.get("artwork") or {}, "redo": t.get("artwork_redo") or {},
         }
         for t in trainees if t.get("artwork") or t.get("artwork_redo")
@@ -968,10 +995,14 @@ async def explain_save(req: Request, authorization: Optional[str] = Header(None)
     category = b.get("category") or ""
     cohort = b.get("cohort") or ""
     if role == "trainee":
-        # trust the server-side trainee record for category/cohort, not the client
+        # A trainee can be assigned more than one category and picks which one
+        # applies each session — trust that choice only if it's actually one of
+        # theirs; cohort still always comes from the server-side record.
         t = _get_trainee(sub)
         if t:
-            category = t.get("category") or category
+            assigned = _trainee_categories(t)
+            if category not in assigned:
+                category = assigned[0] if assigned else category
             cohort = t.get("cohort") or cohort
         # enforce the one-reattempt cap server-side, not just in the UI
         game_id = b.get("game_id")
@@ -1118,7 +1149,7 @@ async def my_assessment_docx(authorization: Optional[str] = Header(None)):
     title.runs[0].font.color.rgb = BRAND_CORAL
 
     sub_p = doc.add_paragraph()
-    sub_run = sub_p.add_run(f"{trainee.get('name')} — {trainee.get('category')}" + (f" — {trainee.get('cohort')}" if trainee.get("cohort") else ""))
+    sub_run = sub_p.add_run(f"{trainee.get('name')} — {', '.join(_trainee_categories(trainee))}" + (f" — {trainee.get('cohort')}" if trainee.get("cohort") else ""))
     sub_run.bold = True
     sub_run.font.size = Pt(13)
     doc.add_paragraph(time.strftime("%d %B %Y"), style=None)
