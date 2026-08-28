@@ -1800,361 +1800,399 @@ window.GAMES = [
     materials: ["Magna-Tiles set", "Prompt cards (level 1 to 5)"],
     skills: ["PR", "LO", "NS"]
   },
-  {
-    id: "imagine-playground",
+    {
+    id: "train-time",
     category: "stem-3-5",
-    section: "logic-lab",
+    section: "imagine-playground",
     age_bands: ["3–5"],
-    name: "Imagine Playground",
-    projects: [
-      {
-        name: "Train Time",
-        skills: ["NS", "PR"],
-        materials: ["Track pieces", "Train cars"],
-        group_size: "Whole group intro → 2 groups build",
-        goal: "the group builds a train and track together, joining pieces and counting them as they go.",
-        steps: [
-          "gather all children. Say: \"Today we are going to build a train and a train track.\" Ask: \"What does a train look like?\", \"What sound does a train make?\", \"What does a train do?\" and let a few children answer.",
-          "show one track piece and explain that track pieces join together to make the path for the train. join two pieces slowly.",
-          "show the engine and explain it pulls the train forward. join a train car to it and place them on the track.",
-          "each group builds its own track, with every child adding one piece in turn. let children try first and help only if needed. ask how many pieces they've used, which piece comes next, and whether the track is getting longer.",
-          "join both groups' tracks together and count the total pieces together.",
-          "move the train around the track, passing it from child to child — when it reaches the last child, that child turns it around and sends it back. ask who gets it next and who will be the driver after 2 more passes.",
-          "introduce a problem: remove one piece (a broken track) and ask what they can do since the train can only move on tracks; or turn one piece the wrong way (a turned track) and ask why the train stopped and how to fix it."
-        ],
-        ends_when: "both groups' tracks are joined, counted together, and the train has completed passes around the full track.",
-        easier: "count the track pieces in order.",
-        harder: "ask how many pieces there are now, what happens if 2 more are added, and how many pieces each group added altogether.",
-        debrief: [
-          "If a track piece is missing or incomplete, what happens to the train?",
-          "How many pieces from each group make up this longer track?"
-        ],
-        variations: [
-          { name: "Elaborate — Easy", text: "Build a track connecting one point to another (e.g. from you to a friend) — focus on joining pieces into a continuous path." },
-          { name: "Elaborate — Hard", text: "Build a track connecting two points using only a set number of pieces — plan how to position them to reach the destination within that limit." }
-        ],
-        common_mistakes: ["don't call the track and car the same thing", "don't let one child do everything", "don't skip counting aloud"]
-      },
-      {
-        name: "First Trip",
-        skills: ["LO"],
-        materials: ["Train set", "DIY red and green flags (for the engage game)", "Coloured blocks — red and green (for the build)", "Masking tape"],
-        group_size: "Whole group for intro and movement game; 2–3 groups to build",
-        goal: "the group builds a track with a masking-tape path and uses red and green blocks to control where the train stops and starts.",
-        steps: [
-          "gather the children and talk about trains. ask if they've travelled by train and where. introduce the Choo Choo Train game — children line up with hands on the shoulders of the child in front. show a green flag to move and a red flag to stop, and practice stopping and starting 2–3 times.",
-          "create a masking tape path with a start, curves, and an end. divide children into groups to build different parts of the track, helping only if needed.",
-          "once the track is complete, move the train along it. introduce the red and green blocks — children use the red block to stop the train and the green block to start it again.",
-          "ask how the train moves on the curves, where it should stop, and how the track pieces connect."
-        ],
-        ends_when: "the train has run the full tape-marked path, stopping and starting at the blocks the children placed.",
-        easier: "place one red block at an educator-chosen spot to stop the train.",
-        harder: "children decide where to place the red and green blocks so the train stops and starts at different points, then test and adjust.",
-        debrief: [
-          "What happens when the red block is used? The green?",
-          "Where did the train stop?",
-          "Did our track follow the tape trail? Where did it curve? What happens to the train at a curve?",
-          "If the train doesn't stop at the red block, what can we try? If it falls off the track, what should we check first?"
-        ],
-        variations: [
-          { name: "Elaborate — Easy/Medium", text: "Add one station in the middle of the track. Move the train from start to destination and notice what happens at the station — does every train stop at every station? Should ours? Children decide and practice stopping/starting there." },
-          { name: "Elaborate — Hard", text: "Add a station with a stop/go signal just before it. As the train nears the station, change the signal (if it started green, switch to red, or vice versa) — children must watch and react in the moment." }
-        ],
-        common_mistakes: ["let children use the blocks themselves, don't just show them", "don't stop the train for them every time", "always ask \"where did it stop?\"", "don't let one child control the train the whole time"]
-      },
-      {
-        name: "Load the Train",
-        skills: ["NS", "LO", "CU"],
-        materials: ["Train cars", "Small blocks for loading (a few colours)", "Masking tape"],
-        group_size: "Whole group intro; pairs or groups of 2–3",
-        goal: "the child loads a freight train with the correct number and colour of blocks, counting to check the load.",
-        steps: [
-          "gather the children and introduce the freight train — explain that freight trains carry objects and materials, and should be loaded with the correct amount. demonstrate by loading a freight car with 3 blocks, counting aloud, then checking the count together.",
-          "children first sort the blocks by colour.",
-          "give each group a loading instruction and let them load the car, counting as they go.",
-          "ask what their load order is, how many they'll load, and whether they think it's too many, too few, or correct. count together to check, then compare different groups' combinations."
-        ],
-        ends_when: "each group has loaded their car to the instructed amount and the count has been checked together.",
-        easier: "load a given number of blocks of one colour (e.g., 3 red blocks). count while loading, then check if the amount is correct.",
-        harder: "load a fixed total using multiple colours (e.g., 10 blocks using 3 colours). children decide how many of each colour to use.",
-        debrief: [
-          "How many objects did you load? Let's count and check.",
-          "Why is it important to carry the correct amount?",
-          "If I remove 2 blocks, will it be more or less? How many are left?",
-          "You loaded 3 red and 4 blue — how many altogether? Could you make 10 a different way? Tell me one."
-        ],
-        variations: [
-          { name: "Elaborate — Easy", text: "Give a new load order with a different number and colour — child loads and re-checks by counting." },
-          { name: "Elaborate — Hard", text: "Give an unload order instead — \"Take away 2 red blocks from your car.\" Children count what's left and compare to what they started with: \"How many did you start with? How many now? How many did you remove?\"" }
-        ],
-        common_mistakes: ["don't let children randomly fill the train", "don't skip counting aloud", "don't just ask \"is it correct?\" — have them count and check", "keep numbers small for younger children"]
-      },
-      {
-        name: "Longest Track",
-        skills: ["NS"],
-        materials: ["Track pieces", "Measuring tape", "Same-sized blocks", "Pencils/books"],
-        group_size: "Whole group intro; track building in 2 groups",
-        goal: "the group builds the longest track they can and measures it using a standard unit instead of guessing.",
-        steps: [
-          "measure a book using hand spans, then let children try and compare their answers. explain that hands are different sizes, so we need a standard way to measure. measure the book and a pencil using equal-sized blocks, then with a measuring tape. ask which object is longer and whether both methods gave the same result.",
-          "children build a track that reaches as far across the room as possible, with each child adding one piece in turn."
-        ],
-        ends_when: "the group has built and measured their longest track, comparing the result to their prediction.",
-        easier: "build along a masking tape path marked by the educator, then measure the distance in footsteps.",
-        harder: "plan and build a track using the same number of pieces, then measure it with a measuring tape. rebuild to see if the track can reach farther.",
-        debrief: [
-          "Easy: How did we measure?",
-          "Hard: After rebuilding, did your track reach farther — what did you change? If we built with no curves at all, would it reach more or less? Why?"
-        ],
-        variations: [
-          { name: "Elaborate — Easy", text: "Build a track that reaches a specific target distance the educator names (e.g. \"reach exactly 10 footsteps\") — add or remove pieces until it matches." },
-          { name: "Elaborate — Hard", text: "Build two short tracks starting from two different walls and try to get them as close to meeting in the middle as possible — measure the gap between them." }
-        ],
-        common_mistakes: ["let them measure, don't just guess", "don't measure curve-by-curve if measuring total reach", "don't let children argue without checking", "don't skip recording results"]
-      },
-      {
-        name: "Train Sound",
-        skills: ["PR", "LO"],
-        materials: ["Train", "Track pieces", "Coloured blocks (yellow, blue, white, red, green)", "DIY tunnel", "Pre-built picnic set and fuel station"],
-        group_size: "Whole group",
-        goal: "the child places instruction blocks along the track so the train reacts correctly — blowing its horn or stopping to refuel — before reaching each landmark.",
-        steps: [
-          "gather the children and talk about train stations. ask how people know a train is coming, and explain that trains use a horn to warn people and also stop for fuel during long journeys.",
-          "play the Choo Choo Train game — children line up with hands on the shoulders. yellow means blow the horn (\"choo choo\") while walking slowly, and blue means stop to refuel (\"bloop bloop\"). repeat 2–3 rounds. if children are ready, also include red (stop) and green (go).",
-          "build the train track together and place a picnic area and a fuel station along the route. introduce the yellow and blue blocks as instruction blocks for the train.",
-          "children decide where each block should go so the train blows its horn before reaching the picnic area and stops to refuel before reaching the fuel station. test the train by moving it along the track."
-        ],
-        ends_when: "the train has run the full route, correctly reacting to each block before its matching landmark.",
-        easier: "the educator places the picnic area and fuel station. children place the matching yellow and blue blocks before each stop.",
-        harder: "children decide where to place both the stops and the matching blocks, then test and adjust their plan.",
-        debrief: [
-          "Why should the yellow block come before the picnic area?",
-          "What happened first, next, and last?",
-          "What would happen if we changed the order?"
-        ],
-        variations: [
-          { name: "Elaborate — Easy/Medium", text: "Ask about going through a dark tunnel or room — introduce the white block (\"turns on the lights before a tunnel\"). Kids run the train through and narrate what each block does as they go." },
-          { name: "Elaborate — Hard", text: "The educator rearranges the fuel station and picnic area into a new layout and gives a new spoken order (\"warn some children, then refuel, then turn on the light for a tunnel\"). Kids first say the plan in order (yellow → blue → white), then place the blocks to match, then run the train to check." }
-        ],
-        common_mistakes: ["connect each colour to its action, don't just name it", "don't skip the journey narration", "don't place all the blocks yourself", "don't rush the tunnel observation"]
-      },
-      {
-        name: "O-Shaped Track — Looping",
-        skills: ["LO", "CU"],
-        materials: ["Curved track pieces", "Train", "Coloured blocks", "LEGO blocks for destinations"],
-        group_size: "Whole group for the movement loop and discussion; 2–3 groups for destinations",
-        goal: "the group builds a round, O-shaped track and discovers that a loop lets the train repeat the same journey.",
-        steps: [
-          "gather children and ask what they do many times every day or every week (brushing, eating, sleeping etc). explain that when we do something again and again, we are repeating it.",
-          "model a short sequence (hop, clap, spin) and have the children copy and repeat it at least twice. explain this is like a loop — we do it again and again.",
-          "build an O-shaped (round, loop-like) train track together using curved pieces, then build two or three destinations to visit.",
-          "move the train around the loop, using coloured blocks so it can stop at each place."
-        ],
-        ends_when: "the train has completed a full loop, stopping at the destinations the group built.",
-        easier: "the educator gives one simple destination story (\"the passengers want a picnic in the forest — help them get there\") and one stop.",
-        harder: "children build 2–3 destinations and decide the story/order themselves, adding a blue block wherever they decide the train needs fuel or water.",
-        debrief: [
-          "Can the train take the same trip again? How?",
-          "Which blocks did you use? Why?"
-        ],
-        variations: [
-          { name: "Elaborate — Easy", text: "Build a short double-ended track next to the loop and run the train on both, noticing the double-ended one stops at the end." },
-          { name: "Elaborate — Hard", text: "Compare directly — what's different about these two tracks? Can the train repeat the same journey on the double-ended one? Why or why not?" }
-        ],
-        common_mistakes: ["don't say \"loop\" without showing repetition first", "don't skip the movement game", "don't skip comparing to the double-ended track", "don't build the track for them"]
-      },
-      {
-        name: "Y-Shaped Track — Conditional Statements",
-        skills: ["LO"],
-        materials: ["Y-shaped track", "Train", "Coloured tokens as tickets (DIY tokens if not available)", "Coloured blocks for stops", "Building pieces for stops"],
-        group_size: "Whole group for the ticket game and building; educator/child is the conductor",
-        goal: "the child uses a Y-shaped track and coloured tickets to practise if/then rules — sending the train to the stop that matches each ticket.",
-        steps: [
-          "play the Coloured Tickets game — set up 3 or more train stops with different coloured tokens (e.g. playground, park, zoo). give each child a coloured ticket and say, \"If you have a red ticket, then go to the playground.\" children move to the matching stop. repeat with different colours using \"If... then...\".",
-          "show the Y-track and explain it gives the train two choices — it can go this way or that way. build the Y-track together with at least two stops in matching colours.",
-          "hand out tickets and have children send the train to the matching stop using the coloured blocks. test the train."
-        ],
-        ends_when: "every ticket has been matched to its stop and the train has visited each one.",
-        easier: "the educator is the conductor, hands a ticket to each child, and states the if/then rule aloud each time.",
-        harder: "one child is the conductor and decides the if/then rule themselves, handing out tickets and explaining where each ticket should send the train.",
-        debrief: [
-          "The coloured ticket was a signal — it told us where the passenger wanted to go. Recap which ticket, which stop, and why."
-        ],
-        variations: [
-          { name: "Elaborate — Easy", text: "Add a third stop with a new colour and a new ticket — practise the if/then rule with the added option." },
-          { name: "Elaborate — Hard", text: "Use both Y-shaped tracks to build a track with more destinations (three-ended or Q-shaped). Ask how to signal now that there are more choices, and how the train can go back and visit other stops using the green block." }
-        ],
-        common_mistakes: ["don't skip the classroom ticket game", "repeat if/then clearly, more than once", "don't move the switch for children every time", "don't let children build stops without matching colours"]
-      },
-      {
-        name: "Journey — Trouble on the Road",
-        skills: ["LO", "PR"],
-        materials: ["Y-tracks", "Coloured blocks", "Traffic light", "LEGO blocks"],
-        group_size: "Whole group for discussion and movement game; small groups to build; turns to drive",
-        goal: "the child connects a problem on the track to the traffic sign (coloured block) that solves it.",
-        steps: [
-          "ask what traffic rules the children know and why we need them. show the traffic light and let children guess what each colour means. then pretend each child is driving a train — an educator or child acts as the traffic controller, choosing the lights while children move, slow down, or stop by following the signals.",
-          "small groups each pick a building destination and build it. build a shared Y-track together and place the destinations beside it.",
-          "place coloured blocks along the track as problems. after each block, ask what happened after the train passed or reached it."
-        ],
-        ends_when: "the group has driven past every block and connected each problem to the sign that solves it.",
-        easier: "the educator places 2–3 coloured blocks in clear, sensible spots (e.g. near a destination), so the connection between block and problem is easy to spot.",
-        harder: "the educator scatters blocks randomly along the track — kids take turns driving and observe what happens after each one, without being told in advance what it does.",
-        debrief: [
-          "What problem did you see? Which traffic sign do we need to solve it?",
-          "Children choose signs (coloured blocks) and explain — connecting problem → sign → solution."
-        ],
-        variations: [
-          { name: "Elaborate — Easy", text: "Let kids choose one sign (coloured block) to design for a problem already seen on the track." },
-          { name: "Elaborate — Hard", text: "Kids create their own new traffic signs or use coloured blocks for problems not yet solved, place them along the track, and explain to the group why each sign goes where it does." }
-        ],
-        common_mistakes: ["don't tell the sign's meaning immediately, let them guess", "don't skip the pretend traffic-driving game", "keep block placement varied so problems emerge naturally", "always ask \"which sign solves this?\""]
-      },
-      {
-        name: "Ramps",
-        skills: ["NS", "CU"],
-        materials: ["DIY track — 2", "2 ramps", "Cars/rolling objects", "Number markers", "Paper for graphs", "Magnatiles"],
-        group_size: "Whole group for building; taking turns to test/roll",
-        goal: "the child predicts and measures how far a car rolls down ramps of different lengths, and records the results.",
-        steps: [
-          "ask what it's like to go down a slide and how you move from the top to the bottom. explain simply that gravity is a force that pulls things toward the earth, and that today they'll use ramps and see how far cars roll.",
-          "tape or glue the track template together to make one long track. mark the numbers along the track. position the ramp at one end and roll the car down the ramp onto the track. mark where and at which number it stops, then record the results on a simple graph.",
-          "since there are 2 small ramps, each group first uses one small ramp to test and observe how far the car rolls. after everyone has tried, join the two small ramps together to make one longer ramp. children then repeat the activity and compare how far the car rolls on the longer ramp. discuss how changing the ramp length affects the distance travelled."
-        ],
-        ends_when: "the group has tested both the single and joined ramp, recorded both results, and compared them.",
-        easier: "before rolling, ask how far they think it will go — the child guesses a number, rolls the car, and the educator marks where it stops. then roll on the joined ramp and mark it too.",
-        harder: "compare the single small ramp and the joined longer ramp, predicting and marking each, then compare when it rolled farther — try to make the car roll past a target number on the track, adjusting and retesting.",
-        debrief: [
-          "How far did you think it would roll? Was your guess right? (\"I thought 5, but it stopped at 7.\")",
-          "Which ramp made it roll farther — was it a small or big ramp?"
-        ],
-        variations: [
-          { name: "Elaborate", text: "Repeat the same activity by building ramps with magnatiles or using different objects." }
-        ],
-        common_mistakes: ["always predict before rolling", "always mark where it stops", "don't skip the graph", "keep the gravity explanation simple"]
-      },
-      {
-        name: "Chain Reaction",
-        skills: ["LO", "PR", "CU"],
-        materials: ["Building pieces", "Objects that move/fall/push/trigger"],
-        group_size: "Whole group for the story; pairs build; whole group combines at the end",
-        goal: "the child builds a small chain reaction where one triggered event causes the next.",
-        steps: [
-          "read the Aarav and Anaya free-fall story aloud (a ride drops, lands, and triggers a lever that raises a flag). ask what caused the platform to drop and what happened next. explain that the first trigger was the lever releasing the rope, which caused the platform to drop, and when it landed, that caused the flag to go up — this is called a chain reaction, one event causes another.",
-          "pairs build their own chain reaction where one event should cause another to happen.",
-          "while they build, ask what will happen first, what that will make happen next, and what they think will happen at the end. if it fails, suggest trying to change one part rather than fixing it for them."
-        ],
-        ends_when: "every pair has built and tested a chain reaction that runs from trigger to final event.",
-        easier: "the pair builds a simple 2-step reaction (one trigger → one event) with educator help positioning pieces.",
-        harder: "the pair builds a 3-step reaction (trigger → event → second event) on their own, testing and adjusting without the educator placing pieces for them.",
-        debrief: [
-          "What was the first cause? The first event? The last event?",
-          "Did it happen the way you predicted? Why or why not?"
-        ],
-        variations: [
-          { name: "Elaborate", text: "Combine every pair's reaction into one long class chain reaction in a shared space, test it, and if it stops midway, ask where it stopped and what can be changed — adjust and retry together." }
-        ],
-        common_mistakes: ["don't build it for children", "don't skip the story explanation", "don't skip naming first/next event", "treat failure as part of testing, not as wrong"]
-      },
-      {
-        name: "Probability",
-        skills: ["NS", "LO", "CU"],
-        materials: ["Red/yellow/blue bricks", "Spinner wheel", "Crayons", "Story figures"],
-        group_size: "Whole group for intro/story; spinning turn by turn with all predicting/recording",
-        goal: "the child predicts the outcome of a spin and learns that some outcomes have a better chance without being guaranteed.",
-        steps: [
-          "play a guessing game: \"I am thinking of a colour\" — give clues for red (round fruit, fire engine colour), let kids guess, and ask how they knew. then place three bricks (red/yellow/blue) and say \"I'm thinking of one of these — guess which,\" then ask whether this was easier or harder than the first game, since this time there were only three colours but no clues.",
-          "read the Riya and Kabir Spin to Win story aloud, where Riya guesses red because it's her favourite and Kabir guesses blue because there are more blue spaces — the wheel lands on red. explain that Kabir had the better chance, but Riya still won this time — that's what 'chance' means, it's not a guarantee.",
-          "show the wheel and its pointer and explain this is a game of chance — you can guess, but you can't be completely sure. each child predicts a colour, spins, and the group checks the actual result together, marking it down.",
-          "after a few spins, ask children to also count how many times each colour has come up so far, and use that to inform their next guess."
-        ],
-        ends_when: "the group has completed several spins, recorded the actual results, and discussed which colour had the better chance.",
-        easier: "each child predicts a colour, spins, and the group checks the actual result together, one colour at a time.",
-        harder: "after a few spins, children also count how many times each colour has come up so far, and use that to inform their next guess.",
-        debrief: [
-          "How many times did it land on red / yellow / blue?",
-          "Which colour do you predict next? Why?",
-          "There are more blue spaces, so it has a better chance — but it's still not guaranteed."
-        ],
-        variations: [
-          { name: "Elaborate — Easy", text: "Spin the wheel a few more times; each time, children pick a block matching the result and start collecting pieces." },
-          { name: "Elaborate — Hard", text: "After 5 spins, children use their collected pieces to build a small \"prize,\" then discuss which colour they got the most of and whether that matches which colour has the most wheel spaces." }
-        ],
-        common_mistakes: ["don't skip explaining \"probability\" through the game itself", "don't let children mark their guess instead of the real result", "never promise blue will definitely win — say \"better chance\""]
-      }
+    name: "Train Time",
+    skills: ["NS", "PR"],
+    materials: ["Track pieces", "Train cars"],
+    group_size: "Whole group intro → 2 groups build",
+    goal: "the group builds a train and track together, joining pieces and counting them as they go.",
+    steps: [
+      "gather all children. Say: \"Today we are going to build a train and a train track.\" Ask: \"What does a train look like?\", \"What sound does a train make?\", \"What does a train do?\" and let a few children answer.",
+      "show one track piece and explain that track pieces join together to make the path for the train. join two pieces slowly.",
+      "show the engine and explain it pulls the train forward. join a train car to it and place them on the track.",
+      "each group builds its own track, with every child adding one piece in turn. let children try first and help only if needed. ask how many pieces they've used, which piece comes next, and whether the track is getting longer.",
+      "join both groups' tracks together and count the total pieces together.",
+      "move the train around the track, passing it from child to child — when it reaches the last child, that child turns it around and sends it back. ask who gets it next and who will be the driver after 2 more passes.",
+      "introduce a problem: remove one piece (a broken track) and ask what they can do since the train can only move on tracks; or turn one piece the wrong way (a turned track) and ask why the train stopped and how to fix it."
+    ],
+    ends_when: "both groups' tracks are joined, counted together, and the train has completed passes around the full track.",
+    easier: "count the track pieces in order.",
+    harder: "ask how many pieces there are now, what happens if 2 more are added, and how many pieces each group added altogether.",
+    debrief: [
+      "If a track piece is missing or incomplete, what happens to the train?",
+      "How many pieces from each group make up this longer track?"
+    ],
+    variations: [
+      { name: "Elaborate — Easy", text: "Build a track connecting one point to another (e.g. from you to a friend) — focus on joining pieces into a continuous path." },
+      { name: "Elaborate — Hard", text: "Build a track connecting two points using only a set number of pieces — plan how to position them to reach the destination within that limit." }
+    ],
+    common_mistakes: ["don't call the track and car the same thing", "don't let one child do everything", "don't skip counting aloud"]
+  },
+  {
+    id: "first-trip",
+    category: "stem-3-5",
+    section: "imagine-playground",
+    age_bands: ["3–5"],
+    name: "First Trip",
+    skills: ["LO"],
+    materials: ["Train set", "DIY red and green flags (for the engage game)", "Coloured blocks — red and green (for the build)", "Masking tape"],
+    group_size: "Whole group for intro and movement game; 2–3 groups to build",
+    goal: "the group builds a track with a masking-tape path and uses red and green blocks to control where the train stops and starts.",
+    steps: [
+      "gather the children and talk about trains. ask if they've travelled by train and where. introduce the Choo Choo Train game — children line up with hands on the shoulders of the child in front. show a green flag to move and a red flag to stop, and practice stopping and starting 2–3 times.",
+      "create a masking tape path with a start, curves, and an end. divide children into groups to build different parts of the track, helping only if needed.",
+      "once the track is complete, move the train along it. introduce the red and green blocks — children use the red block to stop the train and the green block to start it again.",
+      "ask how the train moves on the curves, where it should stop, and how the track pieces connect."
+    ],
+    ends_when: "the train has run the full tape-marked path, stopping and starting at the blocks the children placed.",
+    easier: "place one red block at an educator-chosen spot to stop the train.",
+    harder: "children decide where to place the red and green blocks so the train stops and starts at different points, then test and adjust.",
+    debrief: [
+      "What happens when the red block is used? The green?",
+      "Where did the train stop?",
+      "Did our track follow the tape trail? Where did it curve? What happens to the train at a curve?",
+      "If the train doesn't stop at the red block, what can we try? If it falls off the track, what should we check first?"
+    ],
+    variations: [
+      { name: "Elaborate — Easy/Medium", text: "Add one station in the middle of the track. Move the train from start to destination and notice what happens at the station — does every train stop at every station? Should ours? Children decide and practice stopping/starting there." },
+      { name: "Elaborate — Hard", text: "Add a station with a stop/go signal just before it. As the train nears the station, change the signal (if it started green, switch to red, or vice versa) — children must watch and react in the moment." }
+    ],
+    common_mistakes: ["let children use the blocks themselves, don't just show them", "don't stop the train for them every time", "always ask \"where did it stop?\"", "don't let one child control the train the whole time"]
+  },
+  {
+    id: "load-the-train",
+    category: "stem-3-5",
+    section: "imagine-playground",
+    age_bands: ["3–5"],
+    name: "Load the Train",
+    skills: ["NS", "LO", "CU"],
+    materials: ["Train cars", "Small blocks for loading (a few colours)", "Masking tape"],
+    group_size: "Whole group intro; pairs or groups of 2–3",
+    goal: "the child loads a freight train with the correct number and colour of blocks, counting to check the load.",
+    steps: [
+      "gather the children and introduce the freight train — explain that freight trains carry objects and materials, and should be loaded with the correct amount. demonstrate by loading a freight car with 3 blocks, counting aloud, then checking the count together.",
+      "children first sort the blocks by colour.",
+      "give each group a loading instruction and let them load the car, counting as they go.",
+      "ask what their load order is, how many they'll load, and whether they think it's too many, too few, or correct. count together to check, then compare different groups' combinations."
+    ],
+    ends_when: "each group has loaded their car to the instructed amount and the count has been checked together.",
+    easier: "load a given number of blocks of one colour (e.g., 3 red blocks). count while loading, then check if the amount is correct.",
+    harder: "load a fixed total using multiple colours (e.g., 10 blocks using 3 colours). children decide how many of each colour to use.",
+    debrief: [
+      "How many objects did you load? Let's count and check.",
+      "Why is it important to carry the correct amount?",
+      "If I remove 2 blocks, will it be more or less? How many are left?",
+      "You loaded 3 red and 4 blue — how many altogether? Could you make 10 a different way? Tell me one."
+    ],
+    variations: [
+      { name: "Elaborate — Easy", text: "Give a new load order with a different number and colour — child loads and re-checks by counting." },
+      { name: "Elaborate — Hard", text: "Give an unload order instead — \"Take away 2 red blocks from your car.\" Children count what's left and compare to what they started with: \"How many did you start with? How many now? How many did you remove?\"" }
+    ],
+    common_mistakes: ["don't let children randomly fill the train", "don't skip counting aloud", "don't just ask \"is it correct?\" — have them count and check", "keep numbers small for younger children"]
+  },
+  {
+    id: "longest-track",
+    category: "stem-3-5",
+    section: "imagine-playground",
+    age_bands: ["3–5"],
+    name: "Longest Track",
+    skills: ["NS"],
+    materials: ["Track pieces", "Measuring tape", "Same-sized blocks", "Pencils/books"],
+    group_size: "Whole group intro; track building in 2 groups",
+    goal: "the group builds the longest track they can and measures it using a standard unit instead of guessing.",
+    steps: [
+      "measure a book using hand spans, then let children try and compare their answers. explain that hands are different sizes, so we need a standard way to measure. measure the book and a pencil using equal-sized blocks, then with a measuring tape. ask which object is longer and whether both methods gave the same result.",
+      "children build a track that reaches as far across the room as possible, with each child adding one piece in turn."
+    ],
+    ends_when: "the group has built and measured their longest track, comparing the result to their prediction.",
+    easier: "build along a masking tape path marked by the educator, then measure the distance in footsteps.",
+    harder: "plan and build a track using the same number of pieces, then measure it with a measuring tape. rebuild to see if the track can reach farther.",
+    debrief: [
+      "Easy: How did we measure?",
+      "Hard: After rebuilding, did your track reach farther — what did you change? If we built with no curves at all, would it reach more or less? Why?"
+    ],
+    variations: [
+      { name: "Elaborate — Easy", text: "Build a track that reaches a specific target distance the educator names (e.g. \"reach exactly 10 footsteps\") — add or remove pieces until it matches." },
+      { name: "Elaborate — Hard", text: "Build two short tracks starting from two different walls and try to get them as close to meeting in the middle as possible — measure the gap between them." }
+    ],
+    common_mistakes: ["let them measure, don't just guess", "don't measure curve-by-curve if measuring total reach", "don't let children argue without checking", "don't skip recording results"]
+  },
+  {
+    id: "train-sound",
+    category: "stem-3-5",
+    section: "imagine-playground",
+    age_bands: ["3–5"],
+    name: "Train Sound",
+    skills: ["PR", "LO"],
+    materials: ["Train", "Track pieces", "Coloured blocks (yellow, blue, white, red, green)", "DIY tunnel", "Pre-built picnic set and fuel station"],
+    group_size: "Whole group",
+    goal: "the child places instruction blocks along the track so the train reacts correctly — blowing its horn or stopping to refuel — before reaching each landmark.",
+    steps: [
+      "gather the children and talk about train stations. ask how people know a train is coming, and explain that trains use a horn to warn people and also stop for fuel during long journeys.",
+      "play the Choo Choo Train game — children line up with hands on the shoulders. yellow means blow the horn (\"choo choo\") while walking slowly, and blue means stop to refuel (\"bloop bloop\"). repeat 2–3 rounds. if children are ready, also include red (stop) and green (go).",
+      "build the train track together and place a picnic area and a fuel station along the route. introduce the yellow and blue blocks as instruction blocks for the train.",
+      "children decide where each block should go so the train blows its horn before reaching the picnic area and stops to refuel before reaching the fuel station. test the train by moving it along the track."
+    ],
+    ends_when: "the train has run the full route, correctly reacting to each block before its matching landmark.",
+    easier: "the educator places the picnic area and fuel station. children place the matching yellow and blue blocks before each stop.",
+    harder: "children decide where to place both the stops and the matching blocks, then test and adjust their plan.",
+    debrief: [
+      "Why should the yellow block come before the picnic area?",
+      "What happened first, next, and last?",
+      "What would happen if we changed the order?"
+    ],
+    variations: [
+      { name: "Elaborate — Easy/Medium", text: "Ask about going through a dark tunnel or room — introduce the white block (\"turns on the lights before a tunnel\"). Kids run the train through and narrate what each block does as they go." },
+      { name: "Elaborate — Hard", text: "The educator rearranges the fuel station and picnic area into a new layout and gives a new spoken order (\"warn some children, then refuel, then turn on the light for a tunnel\"). Kids first say the plan in order (yellow → blue → white), then place the blocks to match, then run the train to check." }
+    ],
+    common_mistakes: ["connect each colour to its action, don't just name it", "don't skip the journey narration", "don't place all the blocks yourself", "don't rush the tunnel observation"]
+  },
+  {
+    id: "o-shaped-track-looping",
+    category: "stem-3-5",
+    section: "imagine-playground",
+    age_bands: ["3–5"],
+    name: "O-Shaped Track — Looping",
+    skills: ["LO", "CU"],
+    materials: ["Curved track pieces", "Train", "Coloured blocks", "LEGO blocks for destinations"],
+    group_size: "Whole group for the movement loop and discussion; 2–3 groups for destinations",
+    goal: "the group builds a round, O-shaped track and discovers that a loop lets the train repeat the same journey.",
+    steps: [
+      "gather children and ask what they do many times every day or every week (brushing, eating, sleeping etc). explain that when we do something again and again, we are repeating it.",
+      "model a short sequence (hop, clap, spin) and have the children copy and repeat it at least twice. explain this is like a loop — we do it again and again.",
+      "build an O-shaped (round, loop-like) train track together using curved pieces, then build two or three destinations to visit.",
+      "move the train around the loop, using coloured blocks so it can stop at each place."
+    ],
+    ends_when: "the train has completed a full loop, stopping at the destinations the group built.",
+    easier: "the educator gives one simple destination story (\"the passengers want a picnic in the forest — help them get there\") and one stop.",
+    harder: "children build 2–3 destinations and decide the story/order themselves, adding a blue block wherever they decide the train needs fuel or water.",
+    debrief: [
+      "Can the train take the same trip again? How?",
+      "Which blocks did you use? Why?"
+    ],
+    variations: [
+      { name: "Elaborate — Easy", text: "Build a short double-ended track next to the loop and run the train on both, noticing the double-ended one stops at the end." },
+      { name: "Elaborate — Hard", text: "Compare directly — what's different about these two tracks? Can the train repeat the same journey on the double-ended one? Why or why not?" }
+    ],
+    common_mistakes: ["don't say \"loop\" without showing repetition first", "don't skip the movement game", "don't skip comparing to the double-ended track", "don't build the track for them"]
+  },
+  {
+    id: "y-shaped-track-conditional-statements",
+    category: "stem-3-5",
+    section: "imagine-playground",
+    age_bands: ["3–5"],
+    name: "Y-Shaped Track — Conditional Statements",
+    skills: ["LO"],
+    materials: ["Y-shaped track", "Train", "Coloured tokens as tickets (DIY tokens if not available)", "Coloured blocks for stops", "Building pieces for stops"],
+    group_size: "Whole group for the ticket game and building; educator/child is the conductor",
+    goal: "the child uses a Y-shaped track and coloured tickets to practise if/then rules — sending the train to the stop that matches each ticket.",
+    steps: [
+      "play the Coloured Tickets game — set up 3 or more train stops with different coloured tokens (e.g. playground, park, zoo). give each child a coloured ticket and say, \"If you have a red ticket, then go to the playground.\" children move to the matching stop. repeat with different colours using \"If... then...\".",
+      "show the Y-track and explain it gives the train two choices — it can go this way or that way. build the Y-track together with at least two stops in matching colours.",
+      "hand out tickets and have children send the train to the matching stop using the coloured blocks. test the train."
+    ],
+    ends_when: "every ticket has been matched to its stop and the train has visited each one.",
+    easier: "the educator is the conductor, hands a ticket to each child, and states the if/then rule aloud each time.",
+    harder: "one child is the conductor and decides the if/then rule themselves, handing out tickets and explaining where each ticket should send the train.",
+    debrief: [
+      "The coloured ticket was a signal — it told us where the passenger wanted to go. Recap which ticket, which stop, and why."
+    ],
+    variations: [
+      { name: "Elaborate — Easy", text: "Add a third stop with a new colour and a new ticket — practise the if/then rule with the added option." },
+      { name: "Elaborate — Hard", text: "Use both Y-shaped tracks to build a track with more destinations (three-ended or Q-shaped). Ask how to signal now that there are more choices, and how the train can go back and visit other stops using the green block." }
+    ],
+    common_mistakes: ["don't skip the classroom ticket game", "repeat if/then clearly, more than once", "don't move the switch for children every time", "don't let children build stops without matching colours"]
+  },
+  {
+    id: "journey-trouble-on-the-road",
+    category: "stem-3-5",
+    section: "imagine-playground",
+    age_bands: ["3–5"],
+    name: "Journey — Trouble on the Road",
+    skills: ["LO", "PR"],
+    materials: ["Y-tracks", "Coloured blocks", "Traffic light", "LEGO blocks"],
+    group_size: "Whole group for discussion and movement game; small groups to build; turns to drive",
+    goal: "the child connects a problem on the track to the traffic sign (coloured block) that solves it.",
+    steps: [
+      "ask what traffic rules the children know and why we need them. show the traffic light and let children guess what each colour means. then pretend each child is driving a train — an educator or child acts as the traffic controller, choosing the lights while children move, slow down, or stop by following the signals.",
+      "small groups each pick a building destination and build it. build a shared Y-track together and place the destinations beside it.",
+      "place coloured blocks along the track as problems. after each block, ask what happened after the train passed or reached it."
+    ],
+    ends_when: "the group has driven past every block and connected each problem to the sign that solves it.",
+    easier: "the educator places 2–3 coloured blocks in clear, sensible spots (e.g. near a destination), so the connection between block and problem is easy to spot.",
+    harder: "the educator scatters blocks randomly along the track — kids take turns driving and observe what happens after each one, without being told in advance what it does.",
+    debrief: [
+      "What problem did you see? Which traffic sign do we need to solve it?",
+      "Children choose signs (coloured blocks) and explain — connecting problem → sign → solution."
+    ],
+    variations: [
+      { name: "Elaborate — Easy", text: "Let kids choose one sign (coloured block) to design for a problem already seen on the track." },
+      { name: "Elaborate — Hard", text: "Kids create their own new traffic signs or use coloured blocks for problems not yet solved, place them along the track, and explain to the group why each sign goes where it does." }
+    ],
+    common_mistakes: ["don't tell the sign's meaning immediately, let them guess", "don't skip the pretend traffic-driving game", "keep block placement varied so problems emerge naturally", "always ask \"which sign solves this?\""]
+  },
+  {
+    id: "ramps",
+    category: "stem-3-5",
+    section: "imagine-playground",
+    age_bands: ["3–5"],
+    name: "Ramps",
+    skills: ["NS", "CU"],
+    materials: ["DIY track — 2", "2 ramps", "Cars/rolling objects", "Number markers", "Paper for graphs", "Magnatiles"],
+    group_size: "Whole group for building; taking turns to test/roll",
+    goal: "the child predicts and measures how far a car rolls down ramps of different lengths, and records the results.",
+    steps: [
+      "ask what it's like to go down a slide and how you move from the top to the bottom. explain simply that gravity is a force that pulls things toward the earth, and that today they'll use ramps and see how far cars roll.",
+      "tape or glue the track template together to make one long track. mark the numbers along the track. position the ramp at one end and roll the car down the ramp onto the track. mark where and at which number it stops, then record the results on a simple graph.",
+      "since there are 2 small ramps, each group first uses one small ramp to test and observe how far the car rolls. after everyone has tried, join the two small ramps together to make one longer ramp. children then repeat the activity and compare how far the car rolls on the longer ramp. discuss how changing the ramp length affects the distance travelled."
+    ],
+    ends_when: "the group has tested both the single and joined ramp, recorded both results, and compared them.",
+    easier: "before rolling, ask how far they think it will go — the child guesses a number, rolls the car, and the educator marks where it stops. then roll on the joined ramp and mark it too.",
+    harder: "compare the single small ramp and the joined longer ramp, predicting and marking each, then compare when it rolled farther — try to make the car roll past a target number on the track, adjusting and retesting.",
+    debrief: [
+      "How far did you think it would roll? Was your guess right? (\"I thought 5, but it stopped at 7.\")",
+      "Which ramp made it roll farther — was it a small or big ramp?"
+    ],
+    variations: [
+      { name: "Elaborate", text: "Repeat the same activity by building ramps with magnatiles or using different objects." }
+    ],
+    common_mistakes: ["always predict before rolling", "always mark where it stops", "don't skip the graph", "keep the gravity explanation simple"]
+  },
+  {
+    id: "chain-reaction",
+    category: "stem-3-5",
+    section: "imagine-playground",
+    age_bands: ["3–5"],
+    name: "Chain Reaction",
+    skills: ["LO", "PR", "CU"],
+    materials: ["Building pieces", "Objects that move/fall/push/trigger"],
+    group_size: "Whole group for the story; pairs build; whole group combines at the end",
+    goal: "the child builds a small chain reaction where one triggered event causes the next.",
+    steps: [
+      "read the Aarav and Anaya free-fall story aloud (a ride drops, lands, and triggers a lever that raises a flag). ask what caused the platform to drop and what happened next. explain that the first trigger was the lever releasing the rope, which caused the platform to drop, and when it landed, that caused the flag to go up — this is called a chain reaction, one event causes another.",
+      "pairs build their own chain reaction where one event should cause another to happen.",
+      "while they build, ask what will happen first, what that will make happen next, and what they think will happen at the end. if it fails, suggest trying to change one part rather than fixing it for them."
+    ],
+    ends_when: "every pair has built and tested a chain reaction that runs from trigger to final event.",
+    easier: "the pair builds a simple 2-step reaction (one trigger → one event) with educator help positioning pieces.",
+    harder: "the pair builds a 3-step reaction (trigger → event → second event) on their own, testing and adjusting without the educator placing pieces for them.",
+    debrief: [
+      "What was the first cause? The first event? The last event?",
+      "Did it happen the way you predicted? Why or why not?"
+    ],
+    variations: [
+      { name: "Elaborate", text: "Combine every pair's reaction into one long class chain reaction in a shared space, test it, and if it stops midway, ask where it stopped and what can be changed — adjust and retry together." }
+    ],
+    common_mistakes: ["don't build it for children", "don't skip the story explanation", "don't skip naming first/next event", "treat failure as part of testing, not as wrong"]
+  },
+  {
+    id: "probability",
+    category: "stem-3-5",
+    section: "imagine-playground",
+    age_bands: ["3–5"],
+    name: "Probability",
+    skills: ["NS", "LO", "CU"],
+    materials: ["Red/yellow/blue bricks", "Spinner wheel", "Crayons", "Story figures"],
+    group_size: "Whole group for intro/story; spinning turn by turn with all predicting/recording",
+    goal: "the child predicts the outcome of a spin and learns that some outcomes have a better chance without being guaranteed.",
+    steps: [
+      "play a guessing game: \"I am thinking of a colour\" — give clues for red (round fruit, fire engine colour), let kids guess, and ask how they knew. then place three bricks (red/yellow/blue) and say \"I'm thinking of one of these — guess which,\" then ask whether this was easier or harder than the first game, since this time there were only three colours but no clues.",
+      "read the Riya and Kabir Spin to Win story aloud, where Riya guesses red because it's her favourite and Kabir guesses blue because there are more blue spaces — the wheel lands on red. explain that Kabir had the better chance, but Riya still won this time — that's what 'chance' means, it's not a guarantee.",
+      "show the wheel and its pointer and explain this is a game of chance — you can guess, but you can't be completely sure. each child predicts a colour, spins, and the group checks the actual result together, marking it down.",
+      "after a few spins, ask children to also count how many times each colour has come up so far, and use that to inform their next guess."
+    ],
+    ends_when: "the group has completed several spins, recorded the actual results, and discussed which colour had the better chance.",
+    easier: "each child predicts a colour, spins, and the group checks the actual result together, one colour at a time.",
+    harder: "after a few spins, children also count how many times each colour has come up so far, and use that to inform their next guess.",
+    debrief: [
+      "How many times did it land on red / yellow / blue?",
+      "Which colour do you predict next? Why?",
+      "There are more blue spaces, so it has a better chance — but it's still not guaranteed."
+    ],
+    variations: [
+      { name: "Elaborate — Easy", text: "Spin the wheel a few more times; each time, children pick a block matching the result and start collecting pieces." },
+      { name: "Elaborate — Hard", text: "After 5 spins, children use their collected pieces to build a small \"prize,\" then discuss which colour they got the most of and whether that matches which colour has the most wheel spaces." }
+    ],
+    common_mistakes: ["don't skip explaining \"probability\" through the game itself", "don't let children mark their guess instead of the real result", "never promise blue will definitely win — say \"better chance\""]
+  },
+    {
+    id: "sort-and-guess",
+    category: "stem-3-5",
+    section: "wonderworld",
+    age_bands: ["3–5"],
+    name: "Little Kitchen: Sort & Guess",
+    skills: [],
+    materials: ["Food cards (start with half the deck, fruits + vegetables only)", "2 hoops (or 2 marked floor areas)", "A chalk line for above/below"],
+    group_size: null,
+    goal: "the child sorts, matches, or guesses food cards using colour, category, or growth-location rules, building up through Sort, Flip, and Guess.",
+    steps: [
+      "Type 1 — Sort: run these in order over several sessions with the same setup, the rule just gets harder. Colour: assign one colour to each hoop; the teacher sorts 3–4 cards to show how, then children sort the rest themselves. Category: two areas = fruit / vegetable; the teacher fixes the rule before starting and keeps it fixed (if tomato is a fruit today, it stays a fruit). Above/below ground: draw a line; cards go above or below by where the food grows — once secure, add a third zone: on the ground.",
+      "Individual variation: each child gets a set number of cards and takes turns sorting them into the categories. Group variation: the teacher assigns a category to each group and they sort their cards into it.",
+      "Type 2 — Flip (memory + match): lay all cards face-up for 20–30 seconds, let children look, then flip all face-down. Each child turns one card, hunts for its match, keeps the pair if it matches, returns it if not. The match rule rises with level: same colour → same category → same colour and category → the exact same food card.",
+      "Type 3 — Guess (only after Sort is learned): one child picks a mystery food and keeps it secret. Others ask yes/no questions (\"is it a fruit?\", \"does it grow underground?\") — children can ask only 3 yes/no questions. After each answer, remove the cards the question rules out. Once guessed, the finder explains \"because…\" — how the clues led to the answer."
+    ],
+    ends_when: "the group has worked through the Sort, Flip, and Guess stages at their current rule level.",
+    easier: "children sort on the basis of a single rule (e.g. fruit/vegetable); in the Guess variation there's no limit on questions/guesses; the teacher supports if needed.",
+    harder: "the teacher gives a combination of traits (colour + category, or colour + above/below ground, or category + above/below ground — e.g. red fruit, yellow vegetable that grows above ground) and children sort by that combined rule; in the Guess variation the teacher assigns a limited number of questions/guesses and children play independently or add a time constraint.",
+    educator_notes: [
+      "Progress from colour recognition to category sorting, then to understanding above/below ground, and finally to guessing. Ensure each skill is independently and consistently demonstrated before moving on.",
+      "If a child sorts wrong, place their card beside the correct one and ask \"why did you sort this here?\" / \"does this match the rule you chose?\" — let them notice, don't tell."
     ]
   },
   {
-    id: "sort-cook-serve",
+    id: "cooking",
     category: "stem-3-5",
-    section: "logic-lab",
+    section: "wonderworld",
     age_bands: ["3–5"],
-    name: "Sort, Cook & Serve",
-    projects: [
-      {
-        name: "Sort & Guess",
-        skills: [],
-        materials: ["Food cards (start with half the deck, fruits + vegetables only)", "2 hoops (or 2 marked floor areas)", "A chalk line for above/below"],
-        group_size: null,
-        goal: "the child sorts, matches, or guesses food cards using colour, category, or growth-location rules, building up through Sort, Flip, and Guess.",
-        steps: [
-          "Type 1 — Sort: run these in order over several sessions with the same setup, the rule just gets harder. Colour: assign one colour to each hoop; the teacher sorts 3–4 cards to show how, then children sort the rest themselves. Category: two areas = fruit / vegetable; the teacher fixes the rule before starting and keeps it fixed (if tomato is a fruit today, it stays a fruit). Above/below ground: draw a line; cards go above or below by where the food grows — once secure, add a third zone: on the ground.",
-          "Individual variation: each child gets a set number of cards and takes turns sorting them into the categories. Group variation: the teacher assigns a category to each group and they sort their cards into it.",
-          "Type 2 — Flip (memory + match): lay all cards face-up for 20–30 seconds, let children look, then flip all face-down. Each child turns one card, hunts for its match, keeps the pair if it matches, returns it if not. The match rule rises with level: same colour → same category → same colour and category → the exact same food card.",
-          "Type 3 — Guess (only after Sort is learned): one child picks a mystery food and keeps it secret. Others ask yes/no questions (\"is it a fruit?\", \"does it grow underground?\") — children can ask only 3 yes/no questions. After each answer, remove the cards the question rules out. Once guessed, the finder explains \"because…\" — how the clues led to the answer."
-        ],
-        ends_when: "the group has worked through the Sort, Flip, and Guess stages at their current rule level.",
-        easier: "children sort on the basis of a single rule (e.g. fruit/vegetable); in the Guess variation there's no limit on questions/guesses; the teacher supports if needed.",
-        harder: "the teacher gives a combination of traits (colour + category, or colour + above/below ground, or category + above/below ground — e.g. red fruit, yellow vegetable that grows above ground) and children sort by that combined rule; in the Guess variation the teacher assigns a limited number of questions/guesses and children play independently or add a time constraint.",
-        educator_notes: [
-          "Progress from colour recognition to category sorting, then to understanding above/below ground, and finally to guessing. Ensure each skill is independently and consistently demonstrated before moving on.",
-          "If a child sorts wrong, place their card beside the correct one and ask \"why did you sort this here?\" / \"does this match the rule you chose?\" — let them notice, don't tell."
-        ]
-      },
-      {
-        name: "Cooking",
-        skills: [],
-        materials: ["Recipe cards (easy / medium / hard — same recipe)", "Fruit/vegetable cards as ingredients", "Action cards (cut · mix · mould · pour · blend · heat · cool · scoop)", "Cooking mat (work-plate with ½/¼ lines — mat A)", "Play-dough + clay tools", "Action station set around the room and a timer/clock (Heat · Cool/Freeze · Blend · Scoop — handled by the teacher at the station)"],
-        group_size: null,
-        goal: "the child follows a recipe's action and ingredient cards in order, cooking the dish at the mat and the action stations.",
-        steps: [
-          "the teacher dictates the recipe instructions to match the child's level — e.g. an easier instruction with 3–4 steps, and a harder variation with extra steps prompted separately to that group, even when both work from the same mat and recipe.",
-          "following the instructions, children lay the action cards and ingredient cards in order on the mat to show the cooking steps.",
-          "children collect play-dough of the specific colour from the teacher matching their ingredients — the teacher can portion out each colour and ask kids to collect it.",
-          "children follow the steps on the mat: cut, pour, mix, mould are performed directly on their mat; scoop, freeze, heat, blend require carrying the mat to that station, doing the action, running the station timer if needed and counting the cook time, then bringing it back.",
-          "finish by plating on the work-plate/glass, then check and serve.",
-          "teachers can assign roles — one child reads the recipe and counts portions, the other walks the stations and cooks."
-        ],
-        ends_when: "the dish is plated on the work-plate/glass, checked, and served.",
-        easier: "easy/medium recipe cards, type 1 gameplay.",
-        harder: "difficult recipe cards, type 2 gameplay.",
-        variations: [
-          { name: "Fractions & Adding", text: "After the dish is made, add the ½ / ¼ concept: halve a portion on the ½ line, quarter it on the ¼ line." }
-        ],
-        educator_notes: [
-          "Progression: counting comes before adding; adding before halving.",
-          "Let a child notice a wrong step (for example: \"the soup has no water\") and fix it — that noticing-and-fixing is the problem-solving skill, not the finished dish."
-        ]
-      },
-      {
-        name: "Restaurant",
-        skills: [],
-        materials: ["Two areas: a kitchen (the cooking mat) and a restaurant counter", "One menu card (teacher sets the prices)", "Pretend money — tokens", "The cooked dishes"],
-        group_size: null,
-        goal: "the child plays customer, chef, or cashier — ordering, cooking, billing, and paying for dishes from the menu.",
-        steps: [
-          "pre-game setup: the teacher places the recipe cards on the menu card (max 5) and sets their prices as a number of tokens, then gives a set number of tokens to the customer. teachers can divide children into groups and assign roles as customers and chef+cashier. play 2 rounds and swap roles for the 2nd round.",
-          "Stage 1 — Order & Cook: the customer orders from the menu by pointing. one child/group is both chef and cashier — the chef takes the order and places the recipe card on the invoice side of the card, cooks the dish on the kitchen mat, and discusses the recipe requirements with the customer, who can be asked to choose the required ingredients (fruit, vegetable, toppings, etc.).",
-          "Extension (harder): the chef offers add-ons — \"extra cheese? butter? a vegetable?\" — and tells the customer the prices; the customer chooses add-ons based on tokens left. add-ons cost ₹1–₹4 extra, so the bill must be re-totalled on the invoice.",
-          "Stage 2 — Bill & Pay: the cashier totals the bill (adding any add-on prices) on the invoice, the customer pays the total, and the cashier gives change."
-        ],
-        ends_when: "the customer has been billed correctly, paid, and received change, across both rounds with roles swapped.",
-        easier: "customers and chefs work with a single recipe.",
-        harder: "chefs handle multiple food items and must cook to specified portions (example: ½ portion sandwich and ½ portion vegetable salad and 1 glass of orange juice).",
-        educator_notes: [
-          "Don't add money until counting and serving are smooth: paying → making change → re-totalling for add-ons."
-        ]
-      }
+    name: "Little Kitchen: Cooking",
+    skills: [],
+    materials: ["Recipe cards (easy / medium / hard — same recipe)", "Fruit/vegetable cards as ingredients", "Action cards (cut · mix · mould · pour · blend · heat · cool · scoop)", "Cooking mat (work-plate with ½/¼ lines — mat A)", "Play-dough + clay tools", "Action station set around the room and a timer/clock (Heat · Cool/Freeze · Blend · Scoop — handled by the teacher at the station)"],
+    group_size: null,
+    goal: "the child follows a recipe's action and ingredient cards in order, cooking the dish at the mat and the action stations.",
+    steps: [
+      "the teacher dictates the recipe instructions to match the child's level — e.g. an easier instruction with 3–4 steps, and a harder variation with extra steps prompted separately to that group, even when both work from the same mat and recipe.",
+      "following the instructions, children lay the action cards and ingredient cards in order on the mat to show the cooking steps.",
+      "children collect play-dough of the specific colour from the teacher matching their ingredients — the teacher can portion out each colour and ask kids to collect it.",
+      "children follow the steps on the mat: cut, pour, mix, mould are performed directly on their mat; scoop, freeze, heat, blend require carrying the mat to that station, doing the action, running the station timer if needed and counting the cook time, then bringing it back.",
+      "finish by plating on the work-plate/glass, then check and serve.",
+      "teachers can assign roles — one child reads the recipe and counts portions, the other walks the stations and cooks."
+    ],
+    ends_when: "the dish is plated on the work-plate/glass, checked, and served.",
+    easier: "easy/medium recipe cards, type 1 gameplay.",
+    harder: "difficult recipe cards, type 2 gameplay.",
+    variations: [
+      { name: "Fractions & Adding", text: "After the dish is made, add the ½ / ¼ concept: halve a portion on the ½ line, quarter it on the ¼ line." }
+    ],
+    educator_notes: [
+      "Progression: counting comes before adding; adding before halving.",
+      "Let a child notice a wrong step (for example: \"the soup has no water\") and fix it — that noticing-and-fixing is the problem-solving skill, not the finished dish."
+    ]
+  },
+  {
+    id: "restaurant",
+    category: "stem-3-5",
+    section: "wonderworld",
+    age_bands: ["3–5"],
+    name: "Little Kitchen: Restaurant",
+    skills: [],
+    materials: ["Two areas: a kitchen (the cooking mat) and a restaurant counter", "One menu card (teacher sets the prices)", "Pretend money — tokens", "The cooked dishes"],
+    group_size: null,
+    goal: "the child plays customer, chef, or cashier — ordering, cooking, billing, and paying for dishes from the menu.",
+    steps: [
+      "pre-game setup: the teacher places the recipe cards on the menu card (max 5) and sets their prices as a number of tokens, then gives a set number of tokens to the customer. teachers can divide children into groups and assign roles as customers and chef+cashier. play 2 rounds and swap roles for the 2nd round.",
+      "Stage 1 — Order & Cook: the customer orders from the menu by pointing. one child/group is both chef and cashier — the chef takes the order and places the recipe card on the invoice side of the card, cooks the dish on the kitchen mat, and discusses the recipe requirements with the customer, who can be asked to choose the required ingredients (fruit, vegetable, toppings, etc.).",
+      "Extension (harder): the chef offers add-ons — \"extra cheese? butter? a vegetable?\" — and tells the customer the prices; the customer chooses add-ons based on tokens left. add-ons cost ₹1–₹4 extra, so the bill must be re-totalled on the invoice.",
+      "Stage 2 — Bill & Pay: the cashier totals the bill (adding any add-on prices) on the invoice, the customer pays the total, and the cashier gives change."
+    ],
+    ends_when: "the customer has been billed correctly, paid, and received change, across both rounds with roles swapped.",
+    easier: "customers and chefs work with a single recipe.",
+    harder: "chefs handle multiple food items and must cook to specified portions (example: ½ portion sandwich and ½ portion vegetable salad and 1 glass of orange juice).",
+    educator_notes: [
+      "Don't add money until counting and serving are smooth: paying → making change → re-totalling for add-ons."
     ]
   }
 ];
