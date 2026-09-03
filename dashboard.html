@@ -25,7 +25,52 @@ const TK='oh_explain_token';
 const root=document.getElementById('root');
 const API=(window.location.protocol==='file:'||window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:8000':'';
 let ALL=[], TRAINEES=[], ACTIVE_TAB='trainees', GAME_FILTER='', TRAINEE_FILTER='', CATEGORY_FILTER='', ADD_TRAINEE_MODE='single', ARTWORK_VIEW='art-design';
-const ART35_COLLECTIONS_ADMIN={artiverse:{label:'Artiverse', slots:['Paper','Crayon','Paint']}, artistotle:{label:'Artistotle', slots:['Eric Carle','Lois Ehlert','Taro Gomi']}};
+const ART35_PROJECTS_ADMIN={
+  artiverse:{ label:'Artiverse', items:[
+    {number:1, title:'Paper — Accordion Folding', options:['An animal body with an added face','A creature of choice']},
+    {number:2, title:'Paper — Circles Folding', options:['Session 1','Session 2','Session 3']},
+    {number:3, title:'Paper — Mosaics', options:['Session 1','Session 2']},
+    {number:4, title:'Paper — Loops & Chains', options:['A chain creature with an added face']},
+    {number:5, title:'Paper — Simple Origami', options:['Session 1','Session 2']},
+    {number:6, title:'Crayons — Solid Colours in Shapes', options:['Session 1','Session 2']},
+    {number:7, title:'Crayons — Solid Colours in Scenery', options:['Session 1','Session 2']},
+    {number:8, title:'Crayons — Intricate Colouring', options:['Session 1','Session 2']},
+    {number:9, title:'Crayons — Doodling', options:['Session 1','Session 2']},
+    {number:10, title:'Crayons — Colour Mixing in Shapes', options:['Session 1','Session 2']},
+    {number:11, title:'Crayons — Colour Mixing in Objects', options:['Session 1','Session 2','Session 3']},
+    {number:12, title:'Crayons — Colour Mixing in Scenery', options:['Session 1','Session 2']},
+    {number:13, title:'Paint — Hand Painting', options:['Session 1','Session 2','Session 3']},
+    {number:14, title:'Paint — Finger Painting', options:['Session 1','Session 2','Session 3']},
+    {number:15, title:'Paint — Sponge Painting', options:['Session 1','Session 2','Session 3']},
+    {number:16, title:'Paint — Q-tip Painting', options:['Session 1']}
+  ]},
+  artistotle:{ label:'Artistotle', items:[
+    {number:5, title:'Eric Carle — Stripes Collage', options:['Session 1']},
+    {number:6, title:'Eric Carle — Caterpillar Collage (Round Shape)', options:['Session 1','Session 2']},
+    {number:7, title:'Eric Carle — Fruit & Vegetable Collage (Irregular Shape)', options:['Session 1']},
+    {number:8, title:'Eric Carle — Jellyfish Collage (Multi-medium, Multi-shape)', options:['Session 1','Session 2']},
+    {number:9, title:'Lois Ehlert — Sponge Dabbling Flowers', options:['Session 1']},
+    {number:10, title:'Lois Ehlert — Brush Flowers', options:['Session 1']},
+    {number:11, title:'Lois Ehlert — Swirling Flowers', options:['Session 1','Session 2']},
+    {number:12, title:'Lois Ehlert — Two-Layer Flower Garden', options:['Session 1','Session 2']},
+    {number:13, title:'Taro Gomi — Simple Colouring', options:['Bear','Tiger']},
+    {number:14, title:'Taro Gomi — Line Making 1', options:['Session 1']},
+    {number:15, title:'Taro Gomi — Add Filling Inside Burger Through Lines', options:['Session 1']},
+    {number:16, title:'Taro Gomi — Draw & Colour 1', options:['Session 1']},
+    {number:17, title:'Taro Gomi — Draw & Colour 2', options:['Session 1']}
+  ]}
+};
+// Flat (number, option) slot list per collection, for the admin table's columns —
+// each column is one specific artwork within the curriculum.
+function art35FlatSlots(collKey){
+  const out=[];
+  ART35_PROJECTS_ADMIN[collKey].items.forEach(item=>{
+    item.options.forEach(opt=>{
+      out.push({key:item.number+'::'+opt, label:'#'+item.number+' '+(item.options.length>1?opt:item.title)});
+    });
+  });
+  return out;
+}
 const CATEGORIES=['art-design','public-speaking','robotics','music','chess','art-3-5','storytelling-3-5','stem-3-5'];
 const CATEGORY_LABELS={'art-design':'Art & Design','public-speaking':'Public Speaking','robotics':'Robotics','music':'Music','chess':'Chess','art-3-5':'Art (3–5)','storytelling-3-5':'Language Through Storytelling (3–5)','stem-3-5':'STEM (3–5)'};
 function catLabel(c){ return CATEGORY_LABELS[c]||c; }
@@ -1061,12 +1106,13 @@ async function artworkTab(){
 
 function renderArtwork35Table(rows, byPhone, t){
   const DIVIDER='border-left:3px solid var(--coral);';
-  const collKeys=Object.keys(ART35_COLLECTIONS_ADMIN);
+  const collKeys=Object.keys(ART35_PROJECTS_ADMIN);
+  const flat={}; collKeys.forEach(ck=>{ flat[ck]=art35FlatSlots(ck); });
   let html='<div class="table-wrap"><table class="sum-table"><thead>'
     +'<tr><th rowspan="2">name</th>'
-    +collKeys.map((ck,i)=>'<th colspan="'+ART35_COLLECTIONS_ADMIN[ck].slots.length+'" style="text-align:center;'+(i>0?DIVIDER:'')+'">'+esc(ART35_COLLECTIONS_ADMIN[ck].label)+'</th>').join('')
+    +collKeys.map((ck,i)=>'<th colspan="'+flat[ck].length+'" style="text-align:center;'+(i>0?DIVIDER:'')+'">'+esc(ART35_PROJECTS_ADMIN[ck].label)+'</th>').join('')
     +'</tr><tr>'
-    +collKeys.map((ck,i)=>ART35_COLLECTIONS_ADMIN[ck].slots.map((s,j)=>'<th'+(i>0&&j===0?' style="'+DIVIDER+'"':'')+'>'+esc(s)+'</th>').join('')).join('')
+    +collKeys.map((ck,i)=>flat[ck].map((s,j)=>'<th'+(i>0&&j===0?' style="'+DIVIDER+'"':'')+' title="'+esc(s.label)+'">'+esc(s.label)+'</th>').join('')).join('')
     +'</tr></thead><tbody>';
   rows.forEach(tr=>{
     const entry=byPhone[tr.phone];
@@ -1074,24 +1120,25 @@ function renderArtwork35Table(rows, byPhone, t){
     collKeys.forEach((ck,collIdx)=>{
       const slotData=(entry && entry.artwork35 && entry.artwork35[ck])||{};
       const redoSlots=(entry && entry.redo && entry.redo[ck])||[];
-      ART35_COLLECTIONS_ADMIN[ck].slots.forEach((slotName,slotIdx)=>{
-        const raw=slotData[slotName];
+      flat[ck].forEach((s,slotIdx)=>{
+        const raw=slotData[s.key];
         const versions=Array.isArray(raw)?raw:(raw?[raw]:[]);
         const divider=(collIdx>0 && slotIdx===0)?DIVIDER:'';
-        const flagged=redoSlots.includes(slotName);
+        const flagged=redoSlots.includes(s.key);
+        const [numberStr, option]=s.key.split('::');
         let cell;
         if(versions.length){
           const links=versions.map((v,i)=>{
             const isCurrent=i===versions.length-1;
             const label=isCurrent && versions.length>1?'<b>'+(i+1)+'</b>':String(i+1);
-            const title=esc(v.artwork_name||v.filename||'')+(isCurrent?' (current)':' (replaced)');
+            const title=esc(v.filename||'')+(isCurrent?' (current)':' (replaced)');
             return '<a href="'+esc(v.url||'#')+'" target="_blank" rel="noopener" title="'+title+'">'+label+'</a>';
           }).join(' ');
-          cell=(versions.length>1?links:'<a href="'+esc(versions[0].url||'#')+'" target="_blank" rel="noopener" title="'+esc(versions[0].artwork_name||versions[0].filename||'')+'">✓</a>')+' '
+          cell=(versions.length>1?links:'<a href="'+esc(versions[0].url||'#')+'" target="_blank" rel="noopener" title="'+esc(versions[0].filename||'')+'">✓</a>')+' '
             +(flagged
               ? '<span style="color:#B3261E" title="redo requested — waiting for resubmission">🔁</span>'
               : '<span class="ghost" style="cursor:pointer;font-size:10px;padding:1px 5px;border-radius:6px" '
-                +'data-redo35-phone="'+esc(tr.phone)+'" data-redo35-collection="'+esc(ck)+'" data-redo35-slot="'+esc(slotName)+'" title="ask '+esc(tr.name||'')+' to redo this one">↺</span>');
+                +'data-redo35-phone="'+esc(tr.phone)+'" data-redo35-collection="'+esc(ck)+'" data-redo35-number="'+esc(numberStr)+'" data-redo35-option="'+esc(option)+'" title="ask '+esc(tr.name||'')+' to redo this one">↺</span>');
         } else if(flagged){
           cell='<span style="color:#B3261E" title="redo requested — waiting for resubmission">🔁</span>';
         } else {
@@ -1109,12 +1156,12 @@ function renderArtwork35Table(rows, byPhone, t){
 
   tableEl.querySelectorAll('[data-redo35-phone]').forEach(el=>{
     el.onclick=async()=>{
-      const phone=el.dataset.redo35Phone, collection=el.dataset.redo35Collection, slot=el.dataset.redo35Slot;
-      if(!confirm('Ask this trainee to redo "'+slot+'" ('+ART35_COLLECTIONS_ADMIN[collection].label+')? Their current submission stays visible until they upload a new one.')) return;
+      const phone=el.dataset.redo35Phone, collection=el.dataset.redo35Collection, number=el.dataset.redo35Number, option=el.dataset.redo35Option;
+      if(!confirm('Ask this trainee to redo "#'+number+' '+option+'" ('+ART35_PROJECTS_ADMIN[collection].label+')? Their current submission stays visible until they upload a new one.')) return;
       try{
         const r=await fetch(API+'/api/admin/artwork35/redo',{method:'POST',
           headers:{'Content-Type':'application/json','Authorization':'Bearer '+t},
-          body:JSON.stringify({phone, collection, slot})});
+          body:JSON.stringify({phone, collection, number:Number(number), option})});
         const d=await r.json();
         if(!r.ok) throw new Error(d.detail||'could not send redo request');
         render();

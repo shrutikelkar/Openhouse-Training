@@ -71,11 +71,44 @@ ARTWORK_UNITS = 10
 ARTWORK_MAX_BYTES = 8 * 1024 * 1024  # 8MB per file
 
 # Art 3-5's artwork portfolio is shaped differently from the age-band/unit grid
-# above — two named collections, each with a fixed set of named slots, and
-# every upload also carries a free-text artwork name/title.
-ART35_COLLECTIONS = {
-    "artiverse": ["Paper", "Crayon", "Paint"],
-    "artistotle": ["Eric Carle", "Lois Ehlert", "Taro Gomi"],
+# above — two collections, each a numbered curriculum of techniques. Every
+# number has a fixed dropdown of valid artwork names to upload against (either
+# specific named pieces, or "Session N" when the reference just calls for that
+# many similar pieces without naming each one).
+ART35_PROJECTS = {
+    "artiverse": [
+        {"number": 1, "title": "Paper — Accordion Folding", "options": ["An animal body with an added face", "A creature of choice"]},
+        {"number": 2, "title": "Paper — Circles Folding", "options": ["Session 1", "Session 2", "Session 3"]},
+        {"number": 3, "title": "Paper — Mosaics", "options": ["Session 1", "Session 2"]},
+        {"number": 4, "title": "Paper — Loops & Chains", "options": ["A chain creature with an added face"]},
+        {"number": 5, "title": "Paper — Simple Origami", "options": ["Session 1", "Session 2"]},
+        {"number": 6, "title": "Crayons — Solid Colours in Shapes", "options": ["Session 1", "Session 2"]},
+        {"number": 7, "title": "Crayons — Solid Colours in Scenery", "options": ["Session 1", "Session 2"]},
+        {"number": 8, "title": "Crayons — Intricate Colouring", "options": ["Session 1", "Session 2"]},
+        {"number": 9, "title": "Crayons — Doodling", "options": ["Session 1", "Session 2"]},
+        {"number": 10, "title": "Crayons — Colour Mixing in Shapes", "options": ["Session 1", "Session 2"]},
+        {"number": 11, "title": "Crayons — Colour Mixing in Objects", "options": ["Session 1", "Session 2", "Session 3"]},
+        {"number": 12, "title": "Crayons — Colour Mixing in Scenery", "options": ["Session 1", "Session 2"]},
+        {"number": 13, "title": "Paint — Hand Painting", "options": ["Session 1", "Session 2", "Session 3"]},
+        {"number": 14, "title": "Paint — Finger Painting", "options": ["Session 1", "Session 2", "Session 3"]},
+        {"number": 15, "title": "Paint — Sponge Painting", "options": ["Session 1", "Session 2", "Session 3"]},
+        {"number": 16, "title": "Paint — Q-tip Painting", "options": ["Session 1"]},
+    ],
+    "artistotle": [
+        {"number": 5, "title": "Eric Carle — Stripes Collage", "options": ["Session 1"]},
+        {"number": 6, "title": "Eric Carle — Caterpillar Collage (Round Shape)", "options": ["Session 1", "Session 2"]},
+        {"number": 7, "title": "Eric Carle — Fruit & Vegetable Collage (Irregular Shape)", "options": ["Session 1"]},
+        {"number": 8, "title": "Eric Carle — Jellyfish Collage (Multi-medium, Multi-shape)", "options": ["Session 1", "Session 2"]},
+        {"number": 9, "title": "Lois Ehlert — Sponge Dabbling Flowers", "options": ["Session 1"]},
+        {"number": 10, "title": "Lois Ehlert — Brush Flowers", "options": ["Session 1"]},
+        {"number": 11, "title": "Lois Ehlert — Swirling Flowers", "options": ["Session 1", "Session 2"]},
+        {"number": 12, "title": "Lois Ehlert — Two-Layer Flower Garden", "options": ["Session 1", "Session 2"]},
+        {"number": 13, "title": "Taro Gomi — Simple Colouring", "options": ["Bear", "Tiger"]},
+        {"number": 14, "title": "Taro Gomi — Line Making 1", "options": ["Session 1"]},
+        {"number": 15, "title": "Taro Gomi — Add Filling Inside Burger Through Lines", "options": ["Session 1"]},
+        {"number": 16, "title": "Taro Gomi — Draw & Colour 1", "options": ["Session 1"]},
+        {"number": 17, "title": "Taro Gomi — Draw & Colour 2", "options": ["Session 1"]},
+    ],
 }
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -102,6 +135,19 @@ def _trainee_categories(trainee: dict) -> list:
         return cats
     single = trainee.get("category")
     return [single] if single else []
+
+
+def _art35_entry(collection: str, number: int) -> dict:
+    """Looks up one numbered unit/project within an Art 3-5 collection, or
+    raises a 400 if the collection or number isn't part of the curriculum."""
+    if collection not in ART35_PROJECTS:
+        raise HTTPException(400, f"collection must be one of {list(ART35_PROJECTS)}")
+    for entry in ART35_PROJECTS[collection]:
+        if entry["number"] == number:
+            return entry
+    valid = [e["number"] for e in ART35_PROJECTS[collection]]
+    raise HTTPException(400, f"number must be one of {valid} for {collection}")
+
 
 # games-data.js tags each game with short skill codes (e.g. "L&T") — expanded
 # here so both the AI prompt and its questions use the real name, never the code.
@@ -694,11 +740,13 @@ async def admin_artwork_redo(req: Request, authorization: Optional[str] = Header
 
 @app.post("/api/artwork35/upload")
 async def artwork35_upload(req: Request, authorization: Optional[str] = Header(None)):
-    """Uploads/replaces one Art 3-5 artwork slot (a collection + named slot) for
-    the signed-in trainee. Body: {collection, slot, artwork_name, file (base64),
-    filename, content_type}. Like the Art & Design uploads, each submission gets
-    its own timestamped pathname — a resubmission never overwrites or deletes
-    the previous file, it just becomes the one shown for that slot."""
+    """Uploads/replaces one Art 3-5 artwork for the signed-in trainee. Body:
+    {collection, number, option, file (base64), filename, content_type} — number
+    is the unit/project number within the collection's curriculum, and option
+    is the specific artwork name chosen from that number's dropdown. Like the
+    Art & Design uploads, each submission gets its own timestamped pathname —
+    a resubmission never overwrites or deletes the previous file, it just
+    becomes the one shown for that number+option."""
     role, phone = _check(authorization, {"trainee"})
     trainee = _get_trainee(phone)
     if not trainee:
@@ -707,17 +755,17 @@ async def artwork35_upload(req: Request, authorization: Optional[str] = Header(N
         raise HTTPException(403, "artwork uploads are only for the art 3-5 category")
     b = await req.json()
     collection = (b.get("collection") or "").strip()
-    slot = (b.get("slot") or "").strip()
-    artwork_name = (b.get("artwork_name") or "").strip()
+    option = (b.get("option") or "").strip()
     filename = (b.get("filename") or "upload").strip()
     content_type = (b.get("content_type") or "application/octet-stream").strip()
     file_b64 = b.get("file") or ""
-    if collection not in ART35_COLLECTIONS:
-        raise HTTPException(400, f"collection must be one of {list(ART35_COLLECTIONS)}")
-    if slot not in ART35_COLLECTIONS[collection]:
-        raise HTTPException(400, f"slot must be one of {ART35_COLLECTIONS[collection]}")
-    if not artwork_name:
-        raise HTTPException(400, "artwork_name is required")
+    try:
+        number = int(b.get("number"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "number must be a number")
+    entry = _art35_entry(collection, number)
+    if option not in entry["options"]:
+        raise HTTPException(400, f"option must be one of {entry['options']}")
     if not file_b64:
         raise HTTPException(400, "no file provided")
     if content_type not in ("image/jpeg", "image/png", "application/pdf"):
@@ -729,6 +777,7 @@ async def artwork35_upload(req: Request, authorization: Optional[str] = Header(N
     if len(data) > ARTWORK_MAX_BYTES:
         raise HTTPException(400, "file too large (max 8MB)")
 
+    slot = f"{number}::{option}"
     ext = os.path.splitext(filename)[1][:10]
     pathname = f"artwork35/{phone}/{collection}/{slot}-{int(time.time() * 1000)}{ext}"
     result = _blob_put(pathname, data, content_type)
@@ -743,7 +792,6 @@ async def artwork35_upload(req: Request, authorization: Optional[str] = Header(N
         "url": result.get("url"),
         "filename": filename,
         "content_type": content_type,
-        "artwork_name": artwork_name,
         "uploaded_at": time.strftime("%Y-%m-%d %H:%M"),
     })
     coll_entry[slot] = history
@@ -789,18 +837,22 @@ async def admin_artwork35(authorization: Optional[str] = Header(None)):
 
 @app.post("/api/admin/artwork35/redo")
 async def admin_artwork35_redo(req: Request, authorization: Optional[str] = Header(None)):
-    """Staff asks a trainee to redo one Art 3-5 slot. The current submission is
-    left in place (still viewable) — only the flag is set, so the trainee sees
-    why; resubmitting via /api/artwork35/upload clears the flag automatically."""
+    """Staff asks a trainee to redo one Art 3-5 artwork. The current submission
+    is left in place (still viewable) — only the flag is set, so the trainee
+    sees why; resubmitting via /api/artwork35/upload clears the flag automatically."""
     _check(authorization, {"staff"})
     b = await req.json()
     phone = (b.get("phone") or "").strip()
     collection = (b.get("collection") or "").strip()
-    slot = (b.get("slot") or "").strip()
-    if collection not in ART35_COLLECTIONS:
-        raise HTTPException(400, f"collection must be one of {list(ART35_COLLECTIONS)}")
-    if slot not in ART35_COLLECTIONS[collection]:
-        raise HTTPException(400, f"slot must be one of {ART35_COLLECTIONS[collection]}")
+    option = (b.get("option") or "").strip()
+    try:
+        number = int(b.get("number"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "number must be a number")
+    entry = _art35_entry(collection, number)
+    if option not in entry["options"]:
+        raise HTTPException(400, f"option must be one of {entry['options']}")
+    slot = f"{number}::{option}"
 
     trainee = _get_trainee(phone)
     if not trainee:
