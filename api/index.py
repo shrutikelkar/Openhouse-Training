@@ -247,6 +247,35 @@ def _blob_put(pathname: str, data: bytes, content_type: str) -> dict:
         raise HTTPException(502, f"blob upload failed: {e.read().decode(errors='replace')}")
 
 
+def _blob_list(prefix: str) -> list:
+    """Lists every blob under a path prefix via Vercel Blob's REST API — used
+    only by the artwork-recovery endpoint below to find files that are still
+    in storage but whose pointer in a trainee's record was lost."""
+    if not BLOB_TOKEN:
+        raise HTTPException(500, "no blob storage configured — add BLOB_READ_WRITE_TOKEN")
+    blobs = []
+    cursor = None
+    while True:
+        qs = {"prefix": prefix, "limit": "1000"}
+        if cursor:
+            qs["cursor"] = cursor
+        url = f"{BLOB_API_BASE}/?{urllib.parse.urlencode(qs)}"
+        req = urllib.request.Request(
+            url, method="GET",
+            headers={"authorization": f"Bearer {BLOB_TOKEN}", "x-api-version": BLOB_API_VERSION},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=25) as r:
+                data = json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            raise HTTPException(502, f"blob list failed: {e.read().decode(errors='replace')}")
+        blobs.extend(data.get("blobs") or [])
+        if not data.get("hasMore"):
+            break
+        cursor = data.get("cursor")
+    return blobs
+
+
 def _get_trainee(phone: str) -> Optional[dict]:
     res = _redis("HGET", TRAINEES_KEY, phone)
     val = res.get("result")
@@ -542,14 +571,19 @@ async def add_trainee(req: Request, authorization: Optional[str] = Header(None))
     except ValueError:
         raise HTTPException(400, "cohort must be a valid date (YYYY-MM-DD)")
     # Re-submitting this form for a phone that already has a trainee (e.g. to
-    # fix a typo) must not silently wipe their approval or creation date.
+    # fix a typo, or change their category) must not silently wipe anything
+    # else already on their record — approval, creation date, and especially
+    # their uploaded artwork/quiz data, none of which this form even knows
+    # about. Start from the existing record and only overlay the fields this
+    # form actually edits, instead of replacing the record wholesale.
     existing = _get_trainee(phone)
-    rec = {
+    rec = dict(existing) if existing else {}
+    rec.update({
         "phone": phone, "name": name, "pin": pin,
         "categories": categories, "category": categories[0], "cohort": cohort, "email": email,
-        "approved": existing.get("approved", False) if existing else False,
-        "added_at": existing.get("added_at") if existing else time.strftime("%Y-%m-%d %H:%M"),
-    }
+    })
+    rec.setdefault("approved", False)
+    rec.setdefault("added_at", time.strftime("%Y-%m-%d %H:%M"))
     _redis("HSET", TRAINEES_KEY, phone, json.dumps(rec, ensure_ascii=False))
     email_sent = False
     if email:
@@ -867,6 +901,100 @@ async def admin_artwork35_redo(req: Request, authorization: Optional[str] = Head
 
     _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
     return {"ok": True, "artwork35": trainee.get("artwork35") or {}, "redo": redo}
+
+
+@app.post("/api/admin/artwork/restore")
+async def admin_artwork_restore(req: Request, authorization: Optional[str] = Header(None)):
+    """Recovery tool for trainees whose artwork/artwork35 pointers were wiped
+    by the add_trainee bug fixed above (it replaced the whole record instead
+    of merging into it). The uploaded files themselves are never deleted by
+    anything in this app, so they're still sitting in Blob storage — this
+    scans artwork/{phone}/ and artwork35/{phone}/, matches each file back to
+    its slot against the known unit/collection layouts (never a guess off
+    Vercel's randomised filename suffix), and reports what it found.
+
+    Only ever fills a slot that's currently EMPTY — an existing submission is
+    never touched or replaced, so this can't clobber real data. Body:
+    {phone, dry_run}; dry_run defaults to true and performs no write at all,
+    only returning what it would restore, for a human to sanity-check first."""
+    _check(authorization, {"staff"})
+    b = await req.json()
+    phone = (b.get("phone") or "").strip()
+    dry_run = b.get("dry_run", True)
+    if not phone:
+        raise HTTPException(400, "phone is required")
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+
+    found = {"artwork": [], "artwork35": []}
+    skipped = {"artwork": [], "artwork35": []}
+
+    artwork = dict(trainee.get("artwork") or {})
+    for blob in _blob_list(f"artwork/{phone}/"):
+        parts = (blob.get("pathname") or "").split("/")
+        if len(parts) != 4 or parts[0] != "artwork":
+            continue
+        age_band, fname = parts[2], parts[3]
+        if age_band not in ARTWORK_AGE_BANDS:
+            continue
+        m = re.match(r"^unit-(\d+)-", fname)
+        if not m or not (1 <= int(m.group(1)) <= ARTWORK_UNITS):
+            continue
+        unit = int(m.group(1))
+        item = {
+            "url": blob.get("url"), "filename": fname,
+            "content_type": blob.get("contentType") or "application/octet-stream",
+            "uploaded_at": (blob.get("uploadedAt") or "")[:16].replace("T", " "),
+        }
+        desc = {"age_band": age_band, "unit": unit, **item}
+        band_entry = artwork.get(age_band) or {}
+        if band_entry.get(str(unit)):
+            skipped["artwork"].append(desc)
+            continue
+        band_entry[str(unit)] = [item]
+        artwork[age_band] = band_entry
+        found["artwork"].append(desc)
+
+    artwork35 = dict(trainee.get("artwork35") or {})
+    for blob in _blob_list(f"artwork35/{phone}/"):
+        parts = (blob.get("pathname") or "").split("/")
+        if len(parts) != 4 or parts[0] != "artwork35":
+            continue
+        collection, fname = parts[2], parts[3]
+        if collection not in ART35_PROJECTS:
+            continue
+        number, option = None, None
+        for entry in ART35_PROJECTS[collection]:
+            for opt in sorted(entry["options"], key=len, reverse=True):
+                if fname.startswith(f"{entry['number']}::{opt}-"):
+                    number, option = entry["number"], opt
+                    break
+            if number is not None:
+                break
+        if number is None:
+            continue
+        item = {
+            "url": blob.get("url"), "filename": fname,
+            "content_type": blob.get("contentType") or "application/octet-stream",
+            "uploaded_at": (blob.get("uploadedAt") or "")[:16].replace("T", " "),
+        }
+        desc = {"collection": collection, "number": number, "option": option, **item}
+        coll_entry = artwork35.get(collection) or {}
+        slot = f"{number}::{option}"
+        if coll_entry.get(slot):
+            skipped["artwork35"].append(desc)
+            continue
+        coll_entry[slot] = [item]
+        artwork35[collection] = coll_entry
+        found["artwork35"].append(desc)
+
+    if not dry_run:
+        trainee["artwork"] = artwork
+        trainee["artwork35"] = artwork35
+        _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
+
+    return {"ok": True, "dry_run": dry_run, "restored": found, "already_present_untouched": skipped}
 
 
 # ---------- explanation quiz ----------
