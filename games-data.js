@@ -237,7 +237,7 @@ window.GAMES = [
     steps: [
       "Offer the child a choice of wipeable material for the page — erasable markers, clay, or yarn are the norm. The books are reusable and laminated, so only materials that wipe off are ever used — never paint or anything that stains.",
       "Use only the resources prescribed for that page — don't substitute in something else.",
-      "The child works through their ArtGym book in linear order, page 1 to the last — the challenge increases page by page.",
+      "The child continues from whichever page they last worked on — always in strict linear order, page by page, never skipping ahead or back. A child starting their book for the very first time begins at Level 1, page 1.",
       "The child completes 1–2 pages for the day.",
       "ArtGym Book and Scribble Book alternate day to day — do one on one day, the other the next."
     ],
@@ -259,7 +259,7 @@ window.GAMES = [
     steps: [
       "Offer the child a choice of wipeable material for the page — erasable markers, clay, or yarn are the norm. The books are reusable and laminated, so only materials that wipe off are ever used — never paint or anything that stains.",
       "Use only the resources prescribed for that page — don't substitute in something else.",
-      "The child works through their ArtGym book in linear order, page 1 to the last — the challenge increases page by page.",
+      "The child continues from whichever page they last worked on — always in strict linear order, page by page, never skipping ahead or back. A child starting their book for the very first time begins at Level 1, page 1.",
       "The child completes 1–2 pages for the day.",
       "ArtGym Book and Scribble Book alternate day to day — do one on one day, the other the next."
     ],
