@@ -467,7 +467,7 @@ async function renderArtwork(){
       +'<a href="https://openhouse-at-apartment-ekiv.vercel.app/login" target="_blank" rel="noopener">https://openhouse-at-apartment-ekiv.vercel.app/login</a> '
       +'and create the mentioned artworks. Try to create the artwork as close as possible to the references provided. '
       +'You may upload the artwork created for each unit during training. '
-      +'The maximum file size for each unit is 8 MB and the accepted formats are JPG, PNG and PDF.</div>';
+      +'The maximum file size for each unit is 3 MB and the accepted formats are JPG, PNG and PDF.</div>';
   root.appendChild(head);
   root.appendChild(tabBar('artwork'));
 
@@ -566,6 +566,117 @@ async function fetchMyArtwork35(){
   return true;
 }
 
+// Splits a collection's items into groups by the part of their title before
+// the em-dash — "Paper — Accordion Folding" groups under "Paper", "Eric Carle
+// — Stripes Collage" groups under "Eric Carle". Trainees submit one technique
+// per group, not every technique.
+function groupItemsByPrefix(items){
+  const order=[], map={};
+  items.forEach(it=>{
+    const g=it.title.split('—')[0].trim();
+    if(!map[g]){ map[g]=[]; order.push(g); }
+    map[g].push(it);
+  });
+  return order.map(g=>({group:g, items:map[g]}));
+}
+function techniqueLabel(item){ return item.title.split('—').slice(1).join('—').trim(); }
+
+function renderArtwork35GroupSlot(collKey,group,grid){
+  const collData=MY_ARTWORK35[collKey]||{};
+  const collRedo=MY_ARTWORK35_REDO[collKey]||[];
+  // find whichever technique in this group (if any) the trainee already submitted
+  let existingItem=null, existingOption=null;
+  outer:
+  for(const it of group.items){
+    for(const opt of it.options){
+      if(collData[it.number+'::'+opt]){ existingItem=it; existingOption=opt; break outer; }
+    }
+  }
+
+  const slot=document.createElement('div'); slot.className='artwork-slot';
+  const groupLabel=document.createElement('div'); groupLabel.style.cssText='font-weight:700;font-size:12.5px'; groupLabel.textContent=group.group;
+  slot.appendChild(groupLabel);
+
+  const unitSelect=document.createElement('select'); unitSelect.style.cssText='font-size:11px;padding:4px 6px;margin:4px 0;width:100%';
+  group.items.forEach(it=>{ const o=document.createElement('option'); o.value=String(it.number); o.textContent=techniqueLabel(it); unitSelect.appendChild(o); });
+  // once a technique has been submitted for this group it can't be swapped for
+  // a different one — even mid-redo, staff flagged that specific technique,
+  // not an invitation to pick a new one
+  if(existingItem) unitSelect.disabled=true;
+  slot.appendChild(unitSelect);
+
+  const body=document.createElement('div');
+
+  function currentItem(){ return group.items.find(it=>String(it.number)===unitSelect.value); }
+
+  function renderForOption(item,option){
+    body.innerHTML='';
+    slot.classList.remove('filled','needs-redo');
+    const raw=collData[item.number+'::'+option];
+    const versions=Array.isArray(raw)?raw:(raw?[raw]:[]);
+    const entry=versions.length?versions[versions.length-1]:null; // most recent submission
+    const needsRedo=collRedo.includes(item.number+'::'+option);
+    if(entry) slot.classList.add('filled');
+    if(needsRedo) slot.classList.add('needs-redo');
+    const thumb=document.createElement('div'); thumb.className='artwork-slot-thumb';
+    if(entry && entry.content_type && entry.content_type.startsWith('image/')) thumb.innerHTML='<img src="'+esc(entry.url)+'" alt="">';
+    else thumb.textContent=entry?'📄':'🖼️';
+    body.appendChild(thumb);
+    // there's no dropdown for the session/option anymore — the first one is
+    // always used, so show which one that was for clarity
+    const label=document.createElement('div'); label.className='muted'; label.style.cssText='font-size:11px;margin-top:2px'; label.textContent=option;
+    body.appendChild(label);
+    const status=document.createElement('div'); status.className='muted'; status.style.cssText='font-size:11px;min-height:14px;margin:3px 0';
+    if(needsRedo){ status.textContent='🔁 please redo this one'; status.style.color='#B3261E'; status.style.fontWeight='700'; }
+    else if(entry) status.textContent='✓ submitted';
+    else status.textContent='';
+    body.appendChild(status);
+    if(!entry || needsRedo){
+      const fileInput=document.createElement('input'); fileInput.type='file'; fileInput.accept='image/jpeg,image/png,.pdf'; fileInput.style.display='none';
+      const btnRow=document.createElement('div'); btnRow.style.cssText='display:flex;gap:5px';
+      const upBtn=document.createElement('button'); upBtn.className='ghost'; upBtn.style.cssText='flex:1;font-size:11.5px;padding:6px 4px';
+      upBtn.textContent=entry?'resubmit':'upload';
+      upBtn.onclick=()=>fileInput.click();
+      btnRow.appendChild(upBtn);
+      body.appendChild(btnRow);
+      body.appendChild(fileInput);
+      fileInput.onchange=()=>{
+        const file=fileInput.files[0];
+        if(!file) return;
+        if(file.type!=='image/jpeg' && file.type!=='image/png' && file.type!=='application/pdf'){ status.textContent='please upload a JPG, PNG or PDF file'; status.style.color='#B3261E'; return; }
+        if(file.size > 3*1024*1024){ status.textContent='file too large (max 3MB)'; status.style.color='#B3261E'; return; }
+        status.style.color='';
+        const previewUrl=URL.createObjectURL(file);
+        if(file.type.startsWith('image/')) thumb.innerHTML='<img src="'+previewUrl+'" alt="">';
+        else thumb.textContent='📄';
+        status.textContent=esc(file.name)+' — not saved yet';
+        btnRow.innerHTML='';
+        const saveBtn=document.createElement('button'); saveBtn.className='btn'; saveBtn.style.cssText='flex:1;font-size:11.5px;padding:6px 4px';
+        saveBtn.textContent='save';
+        saveBtn.onclick=()=>{ URL.revokeObjectURL(previewUrl); uploadArtwork35Slot(collKey, item.number, option, file, status, saveBtn); };
+        const cancelBtn=document.createElement('button'); cancelBtn.className='ghost'; cancelBtn.style.cssText='flex:none;font-size:11.5px;padding:6px 8px';
+        cancelBtn.textContent='cancel';
+        cancelBtn.onclick=()=>{ URL.revokeObjectURL(previewUrl); fileInput.value=''; renderForOption(item,option); };
+        btnRow.append(saveBtn, cancelBtn);
+      };
+    }
+  }
+
+  function renderForUnit(){
+    const item=currentItem();
+    // no dropdown for the session/option — use whichever one was already
+    // submitted for this technique, or just the first one otherwise
+    const option=(existingItem && item.number===existingItem.number) ? existingOption : item.options[0];
+    renderForOption(item, option);
+  }
+
+  if(existingItem) unitSelect.value=String(existingItem.number);
+  unitSelect.onchange=()=>renderForUnit();
+  slot.appendChild(body);
+  grid.appendChild(slot);
+  renderForUnit();
+}
+
 async function renderArtwork35(){
   document.body.classList.remove('login-bg');
   root.innerHTML='<div class="empty">loading…</div>';
@@ -579,9 +690,9 @@ async function renderArtwork35(){
       +'<div style="font-weight:800;font-size:18px">your artwork</div>'
     +'</div>'
     +'<div class="muted" style="font-size:13px;line-height:1.6">Hello 👋<br><br>'
-      +'Each item below is one technique in the curriculum. Where there\'s more than one artwork '
-      +'expected, pick which one you\'re uploading from the dropdown first. '
-      +'The maximum file size is 8 MB and the accepted formats are JPG, PNG and PDF.</div>';
+      +'Each collection below is split into groups of related techniques. You only need to submit '
+      +'ONE technique from each group — use the dropdown to pick which one. '
+      +'The maximum file size is 3 MB and the accepted formats are JPG, PNG and PDF.</div>';
   root.appendChild(head);
   root.appendChild(tabBar('artwork'));
 
@@ -590,77 +701,12 @@ async function renderArtwork35(){
     if(collIdx>0){ const divider=document.createElement('hr'); divider.className='artwork-band-divider'; root.appendChild(divider); }
     const title=document.createElement('div'); title.className='artwork-band-title'; title.textContent=coll.label;
     root.appendChild(title);
-    const grid=document.createElement('div'); grid.className='artwork-grid';
-    coll.items.forEach(item=>{
-      const slot=document.createElement('div'); slot.className='artwork-slot';
-      const numLabel=document.createElement('div'); numLabel.style.cssText='font-weight:700;font-size:12.5px'; numLabel.textContent='#'+item.number+' · '+item.title;
-      slot.appendChild(numLabel);
-      let select=null;
-      if(item.options.length>1){
-        select=document.createElement('select'); select.style.cssText='font-size:11px;padding:4px 6px;margin:4px 0';
-        item.options.forEach(opt=>{ const o=document.createElement('option'); o.value=opt; o.textContent=opt; select.appendChild(o); });
-        slot.appendChild(select);
-      }
-      const body=document.createElement('div');
-      slot.appendChild(body);
-      grid.appendChild(slot);
-
-      function renderOption(option){
-        body.innerHTML='';
-        slot.classList.remove('filled','needs-redo');
-        const raw=(MY_ARTWORK35[collKey]||{})[item.number+'::'+option];
-        const versions=Array.isArray(raw)?raw:(raw?[raw]:[]);
-        const entry=versions.length?versions[versions.length-1]:null; // most recent submission
-        const needsRedo=(MY_ARTWORK35_REDO[collKey]||[]).includes(item.number+'::'+option);
-        if(entry) slot.classList.add('filled');
-        if(needsRedo) slot.classList.add('needs-redo');
-        const thumb=document.createElement('div'); thumb.className='artwork-slot-thumb';
-        if(entry && entry.content_type && entry.content_type.startsWith('image/')) thumb.innerHTML='<img src="'+esc(entry.url)+'" alt="">';
-        else thumb.textContent=entry?'📄':'🖼️';
-        body.appendChild(thumb);
-        if(item.options.length===1){
-          const label=document.createElement('div'); label.className='muted'; label.style.cssText='font-size:11px;margin-top:2px'; label.textContent=option;
-          body.appendChild(label);
-        }
-        const status=document.createElement('div'); status.className='muted'; status.style.cssText='font-size:11px;min-height:14px;margin:3px 0';
-        if(needsRedo){ status.textContent='🔁 please redo this one'; status.style.color='#B3261E'; status.style.fontWeight='700'; }
-        else if(entry) status.textContent='✓ submitted';
-        else status.textContent='';
-        body.appendChild(status);
-        if(!entry || needsRedo){
-          const fileInput=document.createElement('input'); fileInput.type='file'; fileInput.accept='image/jpeg,image/png,.pdf'; fileInput.style.display='none';
-          const btnRow=document.createElement('div'); btnRow.style.cssText='display:flex;gap:5px';
-          const upBtn=document.createElement('button'); upBtn.className='ghost'; upBtn.style.cssText='flex:1;font-size:11.5px;padding:6px 4px';
-          upBtn.textContent=entry?'resubmit':'upload';
-          upBtn.onclick=()=>fileInput.click();
-          btnRow.appendChild(upBtn);
-          body.appendChild(btnRow);
-          body.appendChild(fileInput);
-          fileInput.onchange=()=>{
-            const file=fileInput.files[0];
-            if(!file) return;
-            if(file.type!=='image/jpeg' && file.type!=='image/png' && file.type!=='application/pdf'){ status.textContent='please upload a JPG, PNG or PDF file'; status.style.color='#B3261E'; return; }
-            if(file.size > 3*1024*1024){ status.textContent='file too large (max 3MB)'; status.style.color='#B3261E'; return; }
-            status.style.color='';
-            const previewUrl=URL.createObjectURL(file);
-            if(file.type.startsWith('image/')) thumb.innerHTML='<img src="'+previewUrl+'" alt="">';
-            else thumb.textContent='📄';
-            status.textContent=esc(file.name)+' — not saved yet';
-            btnRow.innerHTML='';
-            const saveBtn=document.createElement('button'); saveBtn.className='btn'; saveBtn.style.cssText='flex:1;font-size:11.5px;padding:6px 4px';
-            saveBtn.textContent='save';
-            saveBtn.onclick=()=>{ URL.revokeObjectURL(previewUrl); uploadArtwork35Slot(collKey, item.number, option, file, status, saveBtn); };
-            const cancelBtn=document.createElement('button'); cancelBtn.className='ghost'; cancelBtn.style.cssText='flex:none;font-size:11.5px;padding:6px 8px';
-            cancelBtn.textContent='cancel';
-            cancelBtn.onclick=()=>{ URL.revokeObjectURL(previewUrl); fileInput.value=''; renderOption(option); };
-            btnRow.append(saveBtn, cancelBtn);
-          };
-        }
-      }
-
-      if(select) select.onchange=()=>renderOption(select.value);
-      renderOption(item.options[0]);
-    });
+    const groups=groupItemsByPrefix(coll.items);
+    const note=document.createElement('div'); note.className='muted'; note.style.cssText='font-size:12px;margin:-4px 0 10px';
+    note.textContent='Pick one technique to submit from each of: '+groups.map(g=>g.group).join(', ')+'.';
+    root.appendChild(note);
+    const grid=document.createElement('div'); grid.className='artwork-grid-wide';
+    groups.forEach(g=>renderArtwork35GroupSlot(collKey,g,grid));
     root.appendChild(grid);
   });
 

@@ -139,6 +139,8 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--coral)}
 .artwork-band-divider{border:none;border-top:2px solid var(--line);margin:24px 0 0}
 .artwork-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
 @media (max-width:560px){.artwork-grid{grid-template-columns:repeat(2,1fr)}}
+.artwork-grid-wide{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+@media (max-width:560px){.artwork-grid-wide{grid-template-columns:1fr}}
 .artwork-slot{border:1.5px solid var(--line);border-radius:14px;background:#fff;padding:9px;text-align:center;box-shadow:var(--shadow)}
 .artwork-slot.filled{border-color:#cfe4c4}
 .artwork-slot.needs-redo{border-color:#B3261E;background:#FDECEA}
