@@ -690,8 +690,8 @@ async function renderArtwork35(){
       +'<div style="font-weight:800;font-size:18px">your artwork</div>'
     +'</div>'
     +'<div class="muted" style="font-size:13px;line-height:1.6">Hello 👋<br><br>'
-      +'Each collection below is split into groups of related techniques. You only need to submit '
-      +'ONE technique from each group — use the dropdown to pick which one. '
+      +'Each collection below is split into groups of related units. You only need to submit '
+      +'ONE unit from each group — use the dropdown to pick which one. '
       +'The maximum file size is 3 MB and the accepted formats are JPG, PNG and PDF.</div>';
   root.appendChild(head);
   root.appendChild(tabBar('artwork'));
@@ -703,7 +703,7 @@ async function renderArtwork35(){
     root.appendChild(title);
     const groups=groupItemsByPrefix(coll.items);
     const note=document.createElement('div'); note.className='muted'; note.style.cssText='font-size:12px;margin:-4px 0 10px';
-    note.textContent='Pick one technique to submit from each of: '+groups.map(g=>g.group).join(', ')+'.';
+    note.textContent='Pick one unit to submit from each of: '+groups.map(g=>g.group).join(', ')+'.';
     root.appendChild(note);
     const grid=document.createElement('div'); grid.className='artwork-grid-wide';
     groups.forEach(g=>renderArtwork35GroupSlot(collKey,g,grid));
