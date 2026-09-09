@@ -60,17 +60,21 @@ const ART35_PROJECTS_ADMIN={
     {number:17, title:'Taro Gomi — Draw & Colour 2', options:['Session 1']}
   ]}
 };
-// Flat (number, option) slot list per collection, for the admin table's columns —
-// each column is one specific artwork within the curriculum.
-function art35FlatSlots(collKey){
-  const out=[];
-  ART35_PROJECTS_ADMIN[collKey].items.forEach(item=>{
-    item.options.forEach(opt=>{
-      out.push({key:item.number+'::'+opt, label:'#'+item.number+' '+(item.options.length>1?opt:item.title)});
-    });
+// Groups a collection's items by the part of the title before the em-dash —
+// "Paper — Accordion Folding" groups under "Paper", "Eric Carle — Stripes
+// Collage" groups under "Eric Carle" — matching the trainee-facing view,
+// where a trainee submits only one technique per group. One admin table
+// column per group, not per raw item/option.
+function art35Groups(collKey){
+  const order=[], map={};
+  ART35_PROJECTS_ADMIN[collKey].items.forEach(it=>{
+    const g=it.title.split('—')[0].trim();
+    if(!map[g]){ map[g]=[]; order.push(g); }
+    map[g].push(it);
   });
-  return out;
+  return order.map(g=>({group:g, items:map[g]}));
 }
+function art35TechniqueLabel(item){ return item.title.split('—').slice(1).join('—').trim(); }
 const CATEGORIES=['art-design','public-speaking','robotics','music','chess','art-3-5','storytelling-3-5','stem-3-5'];
 const CATEGORY_LABELS={'art-design':'Art & Design','public-speaking':'Public Speaking','robotics':'Robotics','music':'Music','chess':'Chess','art-3-5':'Art (3–5)','storytelling-3-5':'Language Through Storytelling (3–5)','stem-3-5':'STEM (3–5)'};
 function catLabel(c){ return CATEGORY_LABELS[c]||c; }
@@ -1107,12 +1111,12 @@ async function artworkTab(){
 function renderArtwork35Table(rows, byPhone, t){
   const DIVIDER='border-left:3px solid var(--coral);';
   const collKeys=Object.keys(ART35_PROJECTS_ADMIN);
-  const flat={}; collKeys.forEach(ck=>{ flat[ck]=art35FlatSlots(ck); });
+  const groups={}; collKeys.forEach(ck=>{ groups[ck]=art35Groups(ck); });
   let html='<div class="table-wrap"><table class="sum-table"><thead>'
     +'<tr><th rowspan="2">name</th>'
-    +collKeys.map((ck,i)=>'<th colspan="'+flat[ck].length+'" style="text-align:center;'+(i>0?DIVIDER:'')+'">'+esc(ART35_PROJECTS_ADMIN[ck].label)+'</th>').join('')
+    +collKeys.map((ck,i)=>'<th colspan="'+groups[ck].length+'" style="text-align:center;'+(i>0?DIVIDER:'')+'">'+esc(ART35_PROJECTS_ADMIN[ck].label)+'</th>').join('')
     +'</tr><tr>'
-    +collKeys.map((ck,i)=>flat[ck].map((s,j)=>'<th'+(i>0&&j===0?' style="'+DIVIDER+'"':'')+' title="'+esc(s.label)+'">'+esc(s.label)+'</th>').join('')).join('')
+    +collKeys.map((ck,i)=>groups[ck].map((g,j)=>'<th'+(i>0&&j===0?' style="'+DIVIDER+'"':'')+' title="one of: '+esc(g.items.map(it=>it.title).join(', '))+'">'+esc(g.group)+'</th>').join('')).join('')
     +'</tr></thead><tbody>';
   rows.forEach(tr=>{
     const entry=byPhone[tr.phone];
@@ -1120,29 +1124,42 @@ function renderArtwork35Table(rows, byPhone, t){
     collKeys.forEach((ck,collIdx)=>{
       const slotData=(entry && entry.artwork35 && entry.artwork35[ck])||{};
       const redoSlots=(entry && entry.redo && entry.redo[ck])||[];
-      flat[ck].forEach((s,slotIdx)=>{
-        const raw=slotData[s.key];
-        const versions=Array.isArray(raw)?raw:(raw?[raw]:[]);
-        const divider=(collIdx>0 && slotIdx===0)?DIVIDER:'';
-        const flagged=redoSlots.includes(s.key);
-        const [numberStr, option]=s.key.split('::');
+      groups[ck].forEach((g,groupIdx)=>{
+        // a trainee submits at most one technique per group — find whichever
+        // one (if any) has data or a pending redo flag
+        let foundItem=null, foundOption=null, foundKey=null;
+        outer:
+        for(const it of g.items){
+          for(const opt of it.options){
+            const key=it.number+'::'+opt;
+            if(slotData[key] || redoSlots.includes(key)){ foundItem=it; foundOption=opt; foundKey=key; break outer; }
+          }
+        }
+        const divider=(collIdx>0 && groupIdx===0)?DIVIDER:'';
         let cell;
-        if(versions.length){
-          const links=versions.map((v,i)=>{
-            const isCurrent=i===versions.length-1;
-            const label=isCurrent && versions.length>1?'<b>'+(i+1)+'</b>':String(i+1);
-            const title=esc(v.filename||'')+(isCurrent?' (current)':' (replaced)');
-            return '<a href="'+esc(v.url||'#')+'" target="_blank" rel="noopener" title="'+title+'">'+label+'</a>';
-          }).join(' ');
-          cell=(versions.length>1?links:'<a href="'+esc(versions[0].url||'#')+'" target="_blank" rel="noopener" title="'+esc(versions[0].filename||'')+'">✓</a>')+' '
-            +(flagged
-              ? '<span style="color:#B3261E" title="redo requested — waiting for resubmission">🔁</span>'
-              : '<span class="ghost" style="cursor:pointer;font-size:10px;padding:1px 5px;border-radius:6px" '
-                +'data-redo35-phone="'+esc(tr.phone)+'" data-redo35-collection="'+esc(ck)+'" data-redo35-number="'+esc(numberStr)+'" data-redo35-option="'+esc(option)+'" title="ask '+esc(tr.name||'')+' to redo this one">↺</span>');
-        } else if(flagged){
-          cell='<span style="color:#B3261E" title="redo requested — waiting for resubmission">🔁</span>';
-        } else {
+        if(!foundItem){
           cell='<span class="muted">—</span>';
+        } else {
+          const raw=slotData[foundKey];
+          const versions=Array.isArray(raw)?raw:(raw?[raw]:[]);
+          const flagged=redoSlots.includes(foundKey);
+          const techLabel=art35TechniqueLabel(foundItem);
+          const sub='<div class="muted" style="font-size:10px;margin-bottom:2px">'+esc(foundItem.options.length>1?techLabel+' — '+foundOption:techLabel)+'</div>';
+          if(versions.length){
+            const links=versions.map((v,i)=>{
+              const isCurrent=i===versions.length-1;
+              const label=isCurrent && versions.length>1?'<b>'+(i+1)+'</b>':String(i+1);
+              const title=esc(v.filename||'')+(isCurrent?' (current)':' (replaced)');
+              return '<a href="'+esc(v.url||'#')+'" target="_blank" rel="noopener" title="'+title+'">'+label+'</a>';
+            }).join(' ');
+            cell=sub+(versions.length>1?links:'<a href="'+esc(versions[0].url||'#')+'" target="_blank" rel="noopener" title="'+esc(versions[0].filename||'')+'">✓</a>')+' '
+              +(flagged
+                ? '<span style="color:#B3261E" title="redo requested — waiting for resubmission">🔁</span>'
+                : '<span class="ghost" style="cursor:pointer;font-size:10px;padding:1px 5px;border-radius:6px" '
+                  +'data-redo35-phone="'+esc(tr.phone)+'" data-redo35-collection="'+esc(ck)+'" data-redo35-number="'+foundItem.number+'" data-redo35-option="'+esc(foundOption)+'" title="ask '+esc(tr.name||'')+' to redo this one">↺</span>');
+          } else {
+            cell=sub+'<span style="color:#B3261E" title="redo requested — waiting for resubmission">🔁</span>';
+          }
         }
         html+='<td style="text-align:center;'+divider+'">'+cell+'</td>';
       });
