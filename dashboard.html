@@ -1051,10 +1051,7 @@ async function artworkTab(){
     +'</thead><tbody>';
   rows.forEach(tr=>{
     const entry=byPhone[tr.phone];
-    html+='<tr><td><b>'+esc(tr.name||tr.phone)+'</b> '
-      +'<span class="ghost" style="cursor:pointer;font-size:10px;padding:1px 5px;border-radius:6px" '
-      +'data-restore-phone="'+esc(tr.phone)+'" data-restore-name="'+esc(tr.name||tr.phone)+'" '
-      +'title="check Blob storage for files missing from this trainee\'s record and restore them">restore</span></td>';
+    html+='<tr><td><b>'+esc(tr.name||tr.phone)+'</b></td>';
     ARTWORK_AGE_BANDS.forEach((band,bandIdx)=>{
       const units=(entry && entry.artwork && entry.artwork[band])||{};
       const redoUnits=(entry && entry.redo && entry.redo[band])||[];
@@ -1105,38 +1102,6 @@ async function artworkTab(){
       }catch(e){ alert(e.message||'could not send redo request'); }
     };
   });
-  bindRestoreButtons(tableEl, t);
-}
-
-// Shared by both artwork tables: checks Blob storage for files that are
-// still there but missing from a trainee's record (e.g. from the add_trainee
-// bug that used to wipe artwork on re-submission) and offers to restore them.
-// Always previews first (dry_run) and only ever fills empty slots — it can
-// never overwrite an existing submission — but the actual write still needs
-// a human clicking "OK", never triggered automatically.
-function bindRestoreButtons(container, t){
-  container.querySelectorAll('[data-restore-phone]').forEach(el=>{
-    el.onclick=async()=>{
-      const phone=el.dataset.restorePhone, name=el.dataset.restoreName;
-      const prevText=el.textContent; el.textContent='checking…';
-      try{
-        const preview=await fetch(API+'/api/admin/artwork/restore',{method:'POST',
-          headers:{'Content-Type':'application/json','Authorization':'Bearer '+t},
-          body:JSON.stringify({phone, dry_run:true})}).then(r=>r.json());
-        const found=(preview.restored && (preview.restored.artwork.length+preview.restored.artwork35.length))||0;
-        if(!found){ alert('No files in storage are missing from '+name+'’s record — nothing to restore.'); el.textContent=prevText; return; }
-        const lines=[...preview.restored.artwork.map(x=>'ages '+x.age_band+' unit '+x.unit), ...preview.restored.artwork35.map(x=>x.collection+' #'+x.number+' '+x.option)];
-        if(!confirm('Found '+found+' file(s) in storage not on '+name+'’s record:\n\n'+lines.join('\n')+'\n\nRestore them? (this only fills in missing slots — it never overwrites anything already there)')){ el.textContent=prevText; return; }
-        const r=await fetch(API+'/api/admin/artwork/restore',{method:'POST',
-          headers:{'Content-Type':'application/json','Authorization':'Bearer '+t},
-          body:JSON.stringify({phone, dry_run:false})});
-        const d=await r.json();
-        if(!r.ok) throw new Error(d.detail||'restore failed');
-        alert('Restored '+found+' file(s) for '+name+'.');
-        artworkTab();
-      }catch(e){ alert(e.message||'restore failed'); el.textContent=prevText; }
-    };
-  });
 }
 
 function renderArtwork35Table(rows, byPhone, t){
@@ -1151,10 +1116,7 @@ function renderArtwork35Table(rows, byPhone, t){
     +'</tr></thead><tbody>';
   rows.forEach(tr=>{
     const entry=byPhone[tr.phone];
-    html+='<tr><td><b>'+esc(tr.name||tr.phone)+'</b> '
-      +'<span class="ghost" style="cursor:pointer;font-size:10px;padding:1px 5px;border-radius:6px" '
-      +'data-restore-phone="'+esc(tr.phone)+'" data-restore-name="'+esc(tr.name||tr.phone)+'" '
-      +'title="check Blob storage for files missing from this trainee\'s record and restore them">restore</span></td>';
+    html+='<tr><td><b>'+esc(tr.name||tr.phone)+'</b></td>';
     collKeys.forEach((ck,collIdx)=>{
       const slotData=(entry && entry.artwork35 && entry.artwork35[ck])||{};
       const redoSlots=(entry && entry.redo && entry.redo[ck])||[];
@@ -1206,7 +1168,6 @@ function renderArtwork35Table(rows, byPhone, t){
       }catch(e){ alert(e.message||'could not send redo request'); }
     };
   });
-  bindRestoreButtons(tableEl, t);
 }
 
 function render(){
