@@ -1069,7 +1069,7 @@ async function artworkTab(){
           const links=versions.map((v,i)=>{
             const isCurrent=i===versions.length-1;
             const label=isCurrent && versions.length>1?'<b>'+(i+1)+'</b>':String(i+1);
-            const title=esc(v.filename||'')+(isCurrent?' (current)':' (replaced)');
+            const title=esc(v.filename||'')+(v.minutes_taken?' — '+v.minutes_taken+' min':'')+(isCurrent?' (current)':' (replaced)');
             return '<a href="'+esc(v.url||'#')+'" target="_blank" rel="noopener" title="'+title+'">'+label+'</a>';
           }).join(' ');
           cell=(versions.length>1?links:'<a href="'+esc(versions[0].url||'#')+'" target="_blank" rel="noopener" title="'+esc(versions[0].filename||'')+'">✓</a>')+' '
@@ -1149,7 +1149,7 @@ function renderArtwork35Table(rows, byPhone, t){
             const links=versions.map((v,i)=>{
               const isCurrent=i===versions.length-1;
               const label=isCurrent && versions.length>1?'<b>'+(i+1)+'</b>':String(i+1);
-              const title=esc(v.filename||'')+(isCurrent?' (current)':' (replaced)');
+              const title=esc(v.filename||'')+(v.minutes_taken?' — '+v.minutes_taken+' min':'')+(isCurrent?' (current)':' (replaced)');
               return '<a href="'+esc(v.url||'#')+'" target="_blank" rel="noopener" title="'+title+'">'+label+'</a>';
             }).join(' ');
             cell=sub+(versions.length>1?links:'<a href="'+esc(versions[0].url||'#')+'" target="_blank" rel="noopener" title="'+esc(versions[0].filename||'')+'">✓</a>')+' '
@@ -1187,13 +1187,78 @@ function renderArtwork35Table(rows, byPhone, t){
   });
 }
 
+async function observationsTab(){
+  const t=localStorage.getItem(TK);
+  const loading=document.createElement('div'); loading.className='empty'; loading.textContent='loading observations…';
+  root.appendChild(loading);
+  let data=[];
+  try{
+    const r=await fetch(API+'/api/admin/observations',{headers:{'Authorization':'Bearer '+t}});
+    data = r.ok ? await r.json() : [];
+  }catch(e){}
+  loading.remove();
+  if(ACTIVE_TAB!=='observations') return; // admin switched tabs while this was loading
+
+  const sections=window.OBSERVATION_SECTIONS||[];
+  const byPhone={}; data.forEach(entry=>{ byPhone[entry.phone]=entry; });
+  const rows=TRAINEES
+    .filter(tr=>traineeCategories(tr).includes('art-design'))
+    .filter(tr=>!TRAINEE_FILTER||tr.name===TRAINEE_FILTER)
+    .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+
+  if(!rows.length){
+    const empty=document.createElement('div'); empty.className='empty'; empty.textContent='No art & design trainees match this filter.';
+    root.appendChild(empty);
+    return;
+  }
+
+  rows.forEach(tr=>{
+    const entry=byPhone[tr.phone];
+    const observation=(entry && entry.observation)||{};
+    const card=document.createElement('div'); card.className='card'; card.style.marginBottom='12px';
+    const nameEl=document.createElement('div'); nameEl.style.cssText='font-weight:800;font-size:15px;margin-bottom:8px';
+    nameEl.textContent=tr.name||tr.phone;
+    card.appendChild(nameEl);
+
+    sections.forEach((section,i)=>{
+      const sectionNum=i+1;
+      const submitted=observation[String(sectionNum)];
+      const sTitle=document.createElement('div'); sTitle.style.cssText='font-weight:700;font-size:12.5px;margin-top:10px';
+      sTitle.textContent='Section '+sectionNum+' — '+section.title;
+      card.appendChild(sTitle);
+      if(!submitted){
+        const none=document.createElement('div'); none.className='muted'; none.style.fontSize='12.5px';
+        none.textContent='not yet submitted';
+        card.appendChild(none);
+        return;
+      }
+      const allItems=section.groups.flatMap(g=>g.items);
+      const checkedCount=(submitted.checked||[]).length;
+      const meta=document.createElement('div'); meta.className='muted'; meta.style.fontSize='11.5px';
+      meta.textContent=checkedCount+'/'+allItems.length+' checked · submitted '+esc(submitted.submitted_at||'');
+      card.appendChild(meta);
+      if(submitted.learnt){
+        const l=document.createElement('div'); l.style.cssText='font-size:12.5px;margin-top:4px';
+        l.innerHTML='<b>Learnt:</b> '+esc(submitted.learnt);
+        card.appendChild(l);
+      }
+      if(submitted.support){
+        const s=document.createElement('div'); s.style.cssText='font-size:12.5px;margin-top:2px';
+        s.innerHTML='<b>Needs support:</b> '+esc(submitted.support);
+        card.appendChild(s);
+      }
+    });
+    root.appendChild(card);
+  });
+}
+
 function render(){
   document.getElementById('signout').style.display='inline-block';
   syncTraineePicker();
   root.innerHTML='';
 
   const tabBar=document.createElement('div'); tabBar.className='tabs';
-  [{id:'trainees',label:'Trainees'},{id:'responses',label:'Responses'},{id:'accuracy',label:'Scores'},{id:'charts',label:'Charts'},{id:'artwork',label:'Artwork'}].forEach(t=>{
+  [{id:'trainees',label:'Trainees'},{id:'responses',label:'Responses'},{id:'accuracy',label:'Scores'},{id:'charts',label:'Charts'},{id:'artwork',label:'Artwork'},{id:'observations',label:'Observations'}].forEach(t=>{
     const b=document.createElement('button'); b.className='tab'+(ACTIVE_TAB===t.id?' active':''); b.textContent=t.label;
     b.onclick=()=>{ ACTIVE_TAB=t.id; render(); };
     tabBar.appendChild(b);
@@ -1202,6 +1267,7 @@ function render(){
 
   if(ACTIVE_TAB==='trainees'){ traineesTab(); return; }
   if(ACTIVE_TAB==='artwork'){ artworkTab(); return; }
+  if(ACTIVE_TAB==='observations'){ observationsTab(); return; }
   if(ACTIVE_TAB==='accuracy'){ accuracyTab(); return; }
   if(ACTIVE_TAB==='charts'){ chartsTab(); return; }
   if(!ALL.length){

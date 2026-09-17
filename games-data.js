@@ -2196,3 +2196,57 @@ window.GAMES = [
     ]
   }
 ];
+
+// Art & Design observation checklist — trainees fill this in after sitting in
+// on Art sessions, reflecting on what they noticed. Split into 3 sequential
+// sections (index.html's renderObservation() only unlocks section N+1 once
+// section N is submitted); api/index.py keeps its own copy of just the item
+// ids (OBSERVATION_SECTION_ITEMS) to validate submissions against.
+window.OBSERVATION_SECTIONS = [
+  { title: "Preparation & Age Fit", groups: [
+      { group: "Preparation & Setup", items: [
+          { id: "prep_materials", label: "Materials, tools and tech ready before the class starts" },
+          { id: "prep_stations", label: "Stations/space set up safely and logically" },
+          { id: "prep_objective", label: "Session objective is clear" }
+      ]},
+      { group: "Age-Appropriate Teaching", items: [
+          { id: "age_language", label: "Simple, clear language pitched to the age group" },
+          { id: "age_examples", label: "Uses concrete examples/analogies while explaining" },
+          { id: "age_pace", label: "Realistic pace for the age's attention span" }
+      ]}
+  ]},
+  { title: "Teaching the Skill", groups: [
+      { group: "Instruction & Demonstration", items: [
+          { id: "instr_steps", label: "Breaks the artwork/task into clear steps" },
+          { id: "instr_naming", label: "Correct use and naming of mediums, tools and materials" },
+          { id: "instr_clarity", label: "Instruction clarity — one step at a time, checks for understanding" },
+          { id: "instr_models", label: "Models the skill before children attempt it" }
+      ]},
+      { group: "Challenge Adjustment (Differentiation)", items: [
+          { id: "challenge_up", label: "Levels up — extends children who finish early or need more" },
+          { id: "challenge_down", label: "Levels down — scaffolds/simplifies for children who struggle" }
+      ]},
+      { group: "Technique & Skill Guidance", items: [
+          { id: "tech_drawing", label: "Guidance on drawing / making" },
+          { id: "tech_mediums", label: "Guidance on the use of mediums" },
+          { id: "tech_skills", label: "Guidance on building underlying skills" }
+      ]}
+  ]},
+  { title: "Interaction & Wrap-up", groups: [
+      { group: "Child Interaction & Feedback", items: [
+          { id: "interact_guides", label: "Helping, not doing — guides rather than takes over" },
+          { id: "interact_observes", label: "Observes individuals and the whole group" },
+          { id: "interact_feedback", label: "Gives specific, encouraging, timely feedback" }
+      ]},
+      { group: "Class Management", items: [
+          { id: "mgmt_rules", label: "Ground rules established and reinforced" },
+          { id: "mgmt_tone", label: "Appropriate tone and firmness" },
+          { id: "mgmt_transitions", label: "Manages transitions, noise and safety" }
+      ]},
+      { group: "Closure & Learning", items: [
+          { id: "close_wrapup", label: "Wrap-up / children share their work" },
+          { id: "close_reinforce", label: "Reinforces what was learned" },
+          { id: "close_cleanup", label: "Clean-up routine followed" }
+      ]}
+  ]}
+];

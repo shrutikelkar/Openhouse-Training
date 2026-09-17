@@ -111,6 +111,18 @@ ART35_PROJECTS = {
     ],
 }
 
+# Valid checklist item ids per section of the Art & Design observation form —
+# just enough to validate a submission's "checked" list against; the actual
+# labels/grouping/copy live once, in games-data.js's OBSERVATION_SECTIONS,
+# which only the frontend needs.
+OBSERVATION_SECTION_ITEMS = {
+    1: ["prep_materials", "prep_stations", "prep_objective", "age_language", "age_examples", "age_pace"],
+    2: ["instr_steps", "instr_naming", "instr_clarity", "instr_models", "challenge_up", "challenge_down",
+        "tech_drawing", "tech_mediums", "tech_skills"],
+    3: ["interact_guides", "interact_observes", "interact_feedback", "mgmt_rules", "mgmt_tone",
+        "mgmt_transitions", "close_wrapup", "close_reinforce", "close_cleanup"],
+}
+
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
 EXPLAIN_MIN_TURNS = 3
@@ -646,9 +658,9 @@ async def get_categories(authorization: Optional[str] = Header(None)):
 async def artwork_upload(req: Request, authorization: Optional[str] = Header(None)):
     """Uploads/replaces one artwork slot (a given age band + unit number) for
     the signed-in trainee. Body: {age_band, unit, file (base64), filename,
-    content_type}. Each submission gets its own timestamped pathname — a
-    resubmission never overwrites or deletes the previous file, it just
-    becomes the one shown in artwork[age_band][unit]."""
+    content_type, minutes_taken}. Each submission gets its own timestamped
+    pathname — a resubmission never overwrites or deletes the previous file,
+    it just becomes the one shown in artwork[age_band][unit]."""
     role, phone = _check(authorization, {"trainee"})
     trainee = _get_trainee(phone)
     if not trainee:
@@ -668,6 +680,12 @@ async def artwork_upload(req: Request, authorization: Optional[str] = Header(Non
         raise HTTPException(400, "unit must be a number")
     if not (1 <= unit <= ARTWORK_UNITS):
         raise HTTPException(400, f"unit must be between 1 and {ARTWORK_UNITS}")
+    try:
+        minutes_taken = int(b.get("minutes_taken"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "minutes_taken must be a number")
+    if not (1 <= minutes_taken <= 600):
+        raise HTTPException(400, "minutes_taken must be between 1 and 600")
     if not file_b64:
         raise HTTPException(400, "no file provided")
     if content_type not in ("image/jpeg", "image/png", "application/pdf"):
@@ -694,6 +712,7 @@ async def artwork_upload(req: Request, authorization: Optional[str] = Header(Non
         "filename": filename,
         "content_type": content_type,
         "uploaded_at": time.strftime("%Y-%m-%d %H:%M"),
+        "minutes_taken": minutes_taken,
     })
     band_entry[str(unit)] = history
     artwork[age_band] = band_entry
@@ -775,12 +794,13 @@ async def admin_artwork_redo(req: Request, authorization: Optional[str] = Header
 @app.post("/api/artwork35/upload")
 async def artwork35_upload(req: Request, authorization: Optional[str] = Header(None)):
     """Uploads/replaces one Art 3-5 artwork for the signed-in trainee. Body:
-    {collection, number, option, file (base64), filename, content_type} — number
-    is the unit/project number within the collection's curriculum, and option
-    is the specific artwork name chosen from that number's dropdown. Like the
-    Art & Design uploads, each submission gets its own timestamped pathname —
-    a resubmission never overwrites or deletes the previous file, it just
-    becomes the one shown for that number+option."""
+    {collection, number, option, file (base64), filename, content_type,
+    minutes_taken} — number is the unit/project number within the
+    collection's curriculum, and option is the specific artwork name chosen
+    from that number's dropdown. Like the Art & Design uploads, each
+    submission gets its own timestamped pathname — a resubmission never
+    overwrites or deletes the previous file, it just becomes the one shown
+    for that number+option."""
     role, phone = _check(authorization, {"trainee"})
     trainee = _get_trainee(phone)
     if not trainee:
@@ -800,6 +820,12 @@ async def artwork35_upload(req: Request, authorization: Optional[str] = Header(N
     entry = _art35_entry(collection, number)
     if option not in entry["options"]:
         raise HTTPException(400, f"option must be one of {entry['options']}")
+    try:
+        minutes_taken = int(b.get("minutes_taken"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "minutes_taken must be a number")
+    if not (1 <= minutes_taken <= 600):
+        raise HTTPException(400, "minutes_taken must be between 1 and 600")
     if not file_b64:
         raise HTTPException(400, "no file provided")
     if content_type not in ("image/jpeg", "image/png", "application/pdf"):
@@ -827,6 +853,7 @@ async def artwork35_upload(req: Request, authorization: Optional[str] = Header(N
         "filename": filename,
         "content_type": content_type,
         "uploaded_at": time.strftime("%Y-%m-%d %H:%M"),
+        "minutes_taken": minutes_taken,
     })
     coll_entry[slot] = history
     artwork35[collection] = coll_entry
@@ -995,6 +1022,69 @@ async def admin_artwork_restore(req: Request, authorization: Optional[str] = Hea
         _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
 
     return {"ok": True, "dry_run": dry_run, "restored": found, "already_present_untouched": skipped}
+
+
+# ---------- Art & Design observation checklist ----------
+
+@app.post("/api/observation/submit")
+async def observation_submit(req: Request, authorization: Optional[str] = Header(None)):
+    """Submits one section (1, 2 or 3) of the Art & Design observation
+    checklist for the signed-in trainee. Sections are sequential and final:
+    section N can only be submitted once section N-1 already has been, and a
+    section that's already been submitted can't be resubmitted or edited."""
+    role, phone = _check(authorization, {"trainee"})
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+    if "art-design" not in _trainee_categories(trainee):
+        raise HTTPException(403, "the observation checklist is only for the art & design category")
+    b = await req.json()
+    try:
+        section = int(b.get("section"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "section must be a number")
+    if section not in OBSERVATION_SECTION_ITEMS:
+        raise HTTPException(400, "section must be 1, 2 or 3")
+    observation = trainee.get("observation") or {}
+    if str(section) in observation:
+        raise HTTPException(400, "this section has already been submitted")
+    if section > 1 and str(section - 1) not in observation:
+        raise HTTPException(400, f"submit section {section - 1} first")
+    valid_items = set(OBSERVATION_SECTION_ITEMS[section])
+    checked = [c for c in (b.get("checked") or []) if c in valid_items]
+    observation[str(section)] = {
+        "checked": checked,
+        "learnt": (b.get("learnt") or "").strip(),
+        "support": (b.get("support") or "").strip(),
+        "submitted_at": time.strftime("%Y-%m-%d %H:%M"),
+    }
+    trainee["observation"] = observation
+    _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
+    return {"ok": True, "observation": observation}
+
+
+@app.get("/api/observation/mine")
+async def observation_mine(authorization: Optional[str] = Header(None)):
+    role, phone = _check(authorization, {"trainee"})
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+    if "art-design" not in _trainee_categories(trainee):
+        raise HTTPException(403, "the observation checklist is only for the art & design category")
+    return {"observation": trainee.get("observation") or {}}
+
+
+@app.get("/api/admin/observations")
+async def admin_observations(authorization: Optional[str] = Header(None)):
+    """Every trainee who has submitted at least one section of the
+    observation checklist, for the dashboard."""
+    _check(authorization, {"staff"})
+    trainees = _list_trainees()
+    return [
+        {"phone": t.get("phone"), "name": t.get("name"), "categories": _trainee_categories(t),
+         "observation": t.get("observation") or {}}
+        for t in trainees if t.get("observation")
+    ]
 
 
 # ---------- explanation quiz ----------

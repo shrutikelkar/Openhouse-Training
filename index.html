@@ -115,15 +115,20 @@ function micSupported(){ return !!(navigator.mediaDevices && navigator.mediaDevi
 // MediaRecorder's native output (webm/opus in Chrome, ogg/opus in Firefox, mp4/aac
 // in Safari) isn't a MIME type Gemini's audio understanding accepts — only wav,
 // mp3, aiff, aac, ogg and flac are. Rather than gamble on undocumented leniency,
-// decode whatever the browser recorded and re-encode it as 16kHz mono WAV, a
-// format every browser can produce and Gemini is guaranteed to accept.
+// decode whatever the browser recorded and re-encode it as mono WAV, a format
+// every browser can produce and Gemini is guaranteed to accept.
 async function blobToWavBase64(blob){
   const arrayBuffer=await blob.arrayBuffer();
   const AudioCtx=window.AudioContext||window.webkitAudioContext;
   const decodeCtx=new AudioCtx();
   const decoded=await decodeCtx.decodeAudioData(arrayBuffer);
   decodeCtx.close();
-  const targetRate=16000;
+  // 8kHz (telephone-quality — plenty for speech transcription) keeps even a
+  // full MAX_RECORDING_MS (3 min) WAV, once base64-encoded, safely under
+  // Vercel's fixed ~4.5MB request body limit; 16kHz was pushing well past it
+  // on longer answers, which is what was actually behind "could not
+  // transcribe" — a silently-truncated/rejected upload, not a network issue.
+  const targetRate=8000;
   const offlineCtx=new OfflineAudioContext(1, Math.ceil(decoded.duration*targetRate), targetRate);
   const source=offlineCtx.createBufferSource();
   source.buffer=decoded;
@@ -249,6 +254,9 @@ function tabBar(active){
     const artBtn=document.createElement('button'); artBtn.className='tab-btn'+(active==='artwork'?' active':''); artBtn.textContent='🎨 artwork';
     artBtn.onclick=()=>{ if(active!=='artwork') renderArtwork(); };
     bar.appendChild(artBtn);
+    const obsBtn=document.createElement('button'); obsBtn.className='tab-btn'+(active==='observation'?' active':''); obsBtn.textContent='📋 observation';
+    obsBtn.onclick=()=>{ if(active!=='observation') renderObservation(); };
+    bar.appendChild(obsBtn);
   }
   if(TRAINEE.category==='art-3-5'){
     const artBtn=document.createElement('button'); artBtn.className='tab-btn'+(active==='artwork'?' active':''); artBtn.textContent='🎨 artwork';
@@ -429,11 +437,11 @@ function fileToBase64(file){
 // so a naive r.json() throws a raw SyntaxError. This parses safely and turns
 // that (or any other non-JSON response, e.g. a gateway timeout page) into a
 // message worth showing a trainee.
-async function parseJsonResponse(r){
+async function parseJsonResponse(r, tooLargeMessage){
   const text=await r.text();
   try{ return JSON.parse(text); }
   catch(e){
-    if(r.status===413) throw new Error('file too large — please use a smaller photo');
+    if(r.status===413) throw new Error(tooLargeMessage||'file too large — please use a smaller photo');
     throw new Error('something went wrong saving this (server said: '+r.status+') — please try again');
   }
 }
@@ -490,7 +498,7 @@ async function renderArtwork(){
       slot.appendChild(label);
       const status=document.createElement('div'); status.className='muted'; status.style.cssText='font-size:11px;min-height:14px;margin:3px 0';
       if(needsRedo){ status.textContent='🔁 please redo this one'; status.style.color='#B3261E'; status.style.fontWeight='700'; }
-      else if(entry) status.textContent='✓ submitted';
+      else if(entry) status.textContent='✓ submitted'+(entry.minutes_taken?' ('+entry.minutes_taken+' min)':'');
       else status.textContent='';
       slot.appendChild(status);
       if(!entry || needsRedo){
@@ -513,9 +521,16 @@ async function renderArtwork(){
           else thumb.textContent='📄';
           status.textContent=esc(file.name)+' — not saved yet';
           btnRow.innerHTML='';
+          const minutesInput=document.createElement('input'); minutesInput.type='number'; minutesInput.min='1'; minutesInput.max='600';
+          minutesInput.placeholder='minutes taken'; minutesInput.style.cssText='font-size:11px;padding:4px 6px;margin:4px 0;width:100%';
+          slot.insertBefore(minutesInput, btnRow);
           const saveBtn=document.createElement('button'); saveBtn.className='btn'; saveBtn.style.cssText='flex:1;font-size:11.5px;padding:6px 4px';
           saveBtn.textContent='save';
-          saveBtn.onclick=()=>{ URL.revokeObjectURL(previewUrl); uploadArtworkSlot(band.key, unit, file, status, saveBtn); };
+          saveBtn.onclick=()=>{
+            const minutes=parseInt(minutesInput.value, 10);
+            if(!minutes || minutes<1 || minutes>600){ status.textContent='enter how many minutes this took (1–600)'; status.style.color='#B3261E'; minutesInput.focus(); return; }
+            URL.revokeObjectURL(previewUrl); uploadArtworkSlot(band.key, unit, file, minutes, status, saveBtn);
+          };
           const cancelBtn=document.createElement('button'); cancelBtn.className='ghost'; cancelBtn.style.cssText='flex:none;font-size:11.5px;padding:6px 8px';
           cancelBtn.textContent='cancel';
           cancelBtn.onclick=()=>{ URL.revokeObjectURL(previewUrl); fileInput.value=''; renderArtwork(); };
@@ -534,7 +549,7 @@ async function renderArtwork(){
   root.appendChild(actions);
 }
 
-async function uploadArtworkSlot(ageBand, unit, file, statusEl, btnEl){
+async function uploadArtworkSlot(ageBand, unit, file, minutesTaken, statusEl, btnEl){
   if(file.type!=='image/jpeg' && file.type!=='image/png' && file.type!=='application/pdf'){ statusEl.textContent='please upload a JPG, PNG or PDF file'; statusEl.style.color='#B3261E'; return; }
   if(file.size > 3*1024*1024){ statusEl.textContent='file too large (max 3MB)'; statusEl.style.color='#B3261E'; return; }
   btnEl.disabled=true; const prevText=btnEl.textContent; btnEl.textContent='uploading…';
@@ -543,7 +558,7 @@ async function uploadArtworkSlot(ageBand, unit, file, statusEl, btnEl){
     const b64=await fileToBase64(file);
     const r=await fetch(API+'/api/artwork/upload',{
       method:'POST', headers:{'Content-Type':'application/json', ...authHeader()},
-      body:JSON.stringify({age_band:ageBand, unit:unit, file:b64, filename:file.name, content_type:file.type||'application/octet-stream'})
+      body:JSON.stringify({age_band:ageBand, unit:unit, file:b64, filename:file.name, content_type:file.type||'application/octet-stream', minutes_taken:minutesTaken})
     });
     const d=await parseJsonResponse(r);
     if(!r.ok) throw new Error(d.detail||'upload failed');
@@ -551,6 +566,153 @@ async function uploadArtworkSlot(ageBand, unit, file, statusEl, btnEl){
     renderArtwork();
   }catch(e){
     statusEl.textContent=e.message||'upload failed'; statusEl.style.color='#B3261E';
+    btnEl.disabled=false; btnEl.textContent=prevText;
+  }
+}
+
+let MY_OBSERVATION={};
+async function fetchMyObservation(){
+  try{
+    const r=await fetch(API+'/api/observation/mine',{headers:authHeader()});
+    if(r.status===401){ localStorage.removeItem(TK); loginView('Session expired — sign in again.'); return false; }
+    const d=r.ok ? await r.json() : {};
+    MY_OBSERVATION = d.observation||{};
+  }catch(e){ MY_OBSERVATION={}; }
+  return true;
+}
+
+async function renderObservation(){
+  document.body.classList.remove('login-bg');
+  root.innerHTML='<div class="empty">loading…</div>';
+  const ok=await fetchMyObservation();
+  if(!ok) return;
+
+  root.innerHTML='';
+  const head=document.createElement('div'); head.className='card';
+  head.innerHTML='<div style="display:flex;align-items:center;gap:14px;margin-bottom:12px">'
+      +'<div style="flex:none">'+artworkThumbSVG(56)+'</div>'
+      +'<div style="font-weight:800;font-size:18px">observation checklist</div>'
+    +'</div>'
+    +'<div class="muted" style="font-size:13px;line-height:1.6">'
+      +'Observation is one of the best ways to learn — as long as you know what to look for. During the Art '
+      +'sessions you attend, try to keep an eye out for the pointers below. Please don\'t take notes while the '
+      +'session is running; instead, share your observations on the training group afterwards, along with your '
+      +'own reflections. It\'s completely fine to miss a pointer or two — just make sure that whatever you send '
+      +'is genuine and based on what you actually saw.</div>';
+  root.appendChild(head);
+  root.appendChild(tabBar('observation'));
+
+  const OBS_SECTIONS=window.OBSERVATION_SECTIONS||[];
+  OBS_SECTIONS.forEach((section,i)=>{
+    const sectionNum=i+1;
+    const submitted=MY_OBSERVATION[String(sectionNum)];
+    const prevSubmitted=sectionNum===1 || MY_OBSERVATION[String(sectionNum-1)];
+    const card=document.createElement('div'); card.className='card'; card.style.marginTop='14px';
+    const heading=document.createElement('div'); heading.style.cssText='font-weight:800;font-size:15px;margin-bottom:2px';
+    heading.textContent='Section '+sectionNum+' of '+OBS_SECTIONS.length+' — '+section.title;
+    card.appendChild(heading);
+
+    if(!prevSubmitted){
+      const locked=document.createElement('div'); locked.className='muted'; locked.style.cssText='font-size:13px;margin-top:8px';
+      locked.textContent='🔒 locked — submit Section '+(sectionNum-1)+' first';
+      card.appendChild(locked);
+      root.appendChild(card);
+      return;
+    }
+
+    if(submitted){
+      const status=document.createElement('div'); status.className='muted'; status.style.cssText='font-size:12px;margin:2px 0 10px';
+      status.textContent='✓ submitted '+esc(submitted.submitted_at||'');
+      card.appendChild(status);
+      section.groups.forEach(g=>{
+        const gTitle=document.createElement('div'); gTitle.style.cssText='font-weight:700;font-size:12.5px;margin:10px 0 4px';
+        gTitle.textContent=g.group;
+        card.appendChild(gTitle);
+        g.items.forEach(item=>{
+          const row=document.createElement('div'); row.style.cssText='font-size:13px;line-height:1.6';
+          const checked=(submitted.checked||[]).includes(item.id);
+          row.innerHTML=(checked?'✅':'⬜️')+' '+esc(item.label);
+          card.appendChild(row);
+        });
+      });
+      const learntLabel=document.createElement('div'); learntLabel.style.cssText='font-weight:700;font-size:12.5px;margin:14px 0 4px';
+      learntLabel.textContent='What I learnt';
+      card.appendChild(learntLabel);
+      const learntText=document.createElement('div'); learntText.style.cssText='font-size:13px;white-space:pre-wrap';
+      learntText.textContent=submitted.learnt||'(nothing entered)';
+      card.appendChild(learntText);
+      const supportLabel=document.createElement('div'); supportLabel.style.cssText='font-weight:700;font-size:12.5px;margin:14px 0 4px';
+      supportLabel.textContent='What I need more support with';
+      card.appendChild(supportLabel);
+      const supportText=document.createElement('div'); supportText.style.cssText='font-size:13px;white-space:pre-wrap';
+      supportText.textContent=submitted.support||'(nothing entered)';
+      card.appendChild(supportText);
+      root.appendChild(card);
+      return;
+    }
+
+    // unlocked, not yet submitted — the interactive form
+    const checkboxes=[];
+    section.groups.forEach(g=>{
+      const gTitle=document.createElement('div'); gTitle.style.cssText='font-weight:700;font-size:12.5px;margin:10px 0 4px';
+      gTitle.textContent=g.group;
+      card.appendChild(gTitle);
+      g.items.forEach(item=>{
+        const row=document.createElement('label'); row.style.cssText='display:flex;align-items:flex-start;gap:8px;font-size:13px;line-height:1.5;margin:4px 0;cursor:pointer';
+        const cb=document.createElement('input'); cb.type='checkbox'; cb.value=item.id;
+        cb.style.cssText='margin:3px 0 0 0;flex:none;width:18px;height:18px;padding:0;border:1.5px solid #e3d8c8;border-radius:4px';
+        checkboxes.push(cb);
+        const span=document.createElement('span'); span.style.cssText='flex:1;min-width:0'; span.textContent=item.label;
+        row.append(cb,span);
+        card.appendChild(row);
+      });
+    });
+    const learntLabel=document.createElement('div'); learntLabel.style.cssText='font-weight:700;font-size:12.5px;margin:14px 0 4px';
+    learntLabel.textContent='What I learnt';
+    card.appendChild(learntLabel);
+    const learntInput=document.createElement('textarea'); learntInput.rows=3; learntInput.placeholder='Short answer';
+    learntInput.style.cssText='width:100%;font-size:13px;padding:8px;font-family:inherit;box-sizing:border-box';
+    card.appendChild(learntInput);
+    const supportLabel=document.createElement('div'); supportLabel.style.cssText='font-weight:700;font-size:12.5px;margin:14px 0 4px';
+    supportLabel.textContent='What I need more support with';
+    card.appendChild(supportLabel);
+    const supportInput=document.createElement('textarea'); supportInput.rows=3; supportInput.placeholder='Short answer';
+    supportInput.style.cssText='width:100%;font-size:13px;padding:8px;font-family:inherit;box-sizing:border-box';
+    card.appendChild(supportInput);
+
+    const err=document.createElement('div'); err.style.cssText='font-size:12px;color:#B3261E;min-height:16px;margin-top:8px';
+    card.appendChild(err);
+    const submitBtn=document.createElement('button'); submitBtn.className='btn'; submitBtn.style.cssText='margin-top:4px';
+    submitBtn.textContent='submit Section '+sectionNum;
+    submitBtn.onclick=()=>{
+      const checked=checkboxes.filter(cb=>cb.checked).map(cb=>cb.value);
+      submitObservationSection(sectionNum, checked, learntInput.value, supportInput.value, err, submitBtn);
+    };
+    card.appendChild(submitBtn);
+    root.appendChild(card);
+  });
+
+  const actions=document.createElement('div'); actions.style.cssText='display:flex;gap:8px;margin-top:14px';
+  const signout=document.createElement('button'); signout.className='ghost'; signout.style.flex='none'; signout.textContent='sign out';
+  signout.onclick=()=>{ localStorage.removeItem(TK); localStorage.removeItem('oh_trainee_info'); loginView(); };
+  actions.appendChild(signout);
+  root.appendChild(actions);
+}
+
+async function submitObservationSection(section, checked, learnt, support, errEl, btnEl){
+  errEl.textContent='';
+  btnEl.disabled=true; const prevText=btnEl.textContent; btnEl.textContent='submitting…';
+  try{
+    const r=await fetch(API+'/api/observation/submit',{
+      method:'POST', headers:{'Content-Type':'application/json', ...authHeader()},
+      body:JSON.stringify({section:section, checked:checked, learnt:learnt, support:support})
+    });
+    const d=await parseJsonResponse(r);
+    if(!r.ok) throw new Error(d.detail||'could not submit');
+    MY_OBSERVATION=d.observation;
+    renderObservation();
+  }catch(e){
+    errEl.textContent=e.message||'could not submit';
     btnEl.disabled=false; btnEl.textContent=prevText;
   }
 }
@@ -628,7 +790,7 @@ function renderArtwork35GroupSlot(collKey,group,grid){
     body.appendChild(label);
     const status=document.createElement('div'); status.className='muted'; status.style.cssText='font-size:11px;min-height:14px;margin:3px 0';
     if(needsRedo){ status.textContent='🔁 please redo this one'; status.style.color='#B3261E'; status.style.fontWeight='700'; }
-    else if(entry) status.textContent='✓ submitted';
+    else if(entry) status.textContent='✓ submitted'+(entry.minutes_taken?' ('+entry.minutes_taken+' min)':'');
     else status.textContent='';
     body.appendChild(status);
     if(!entry || needsRedo){
@@ -651,9 +813,16 @@ function renderArtwork35GroupSlot(collKey,group,grid){
         else thumb.textContent='📄';
         status.textContent=esc(file.name)+' — not saved yet';
         btnRow.innerHTML='';
+        const minutesInput=document.createElement('input'); minutesInput.type='number'; minutesInput.min='1'; minutesInput.max='600';
+        minutesInput.placeholder='minutes taken'; minutesInput.style.cssText='font-size:11px;padding:4px 6px;margin:4px 0;width:100%';
+        body.insertBefore(minutesInput, btnRow);
         const saveBtn=document.createElement('button'); saveBtn.className='btn'; saveBtn.style.cssText='flex:1;font-size:11.5px;padding:6px 4px';
         saveBtn.textContent='save';
-        saveBtn.onclick=()=>{ URL.revokeObjectURL(previewUrl); uploadArtwork35Slot(collKey, item.number, option, file, status, saveBtn); };
+        saveBtn.onclick=()=>{
+          const minutes=parseInt(minutesInput.value, 10);
+          if(!minutes || minutes<1 || minutes>600){ status.textContent='enter how many minutes this took (1–600)'; status.style.color='#B3261E'; minutesInput.focus(); return; }
+          URL.revokeObjectURL(previewUrl); uploadArtwork35Slot(collKey, item.number, option, file, minutes, status, saveBtn);
+        };
         const cancelBtn=document.createElement('button'); cancelBtn.className='ghost'; cancelBtn.style.cssText='flex:none;font-size:11.5px;padding:6px 8px';
         cancelBtn.textContent='cancel';
         cancelBtn.onclick=()=>{ URL.revokeObjectURL(previewUrl); fileInput.value=''; renderForOption(item,option); };
@@ -717,7 +886,7 @@ async function renderArtwork35(){
   root.appendChild(actions);
 }
 
-async function uploadArtwork35Slot(collection, number, option, file, statusEl, btnEl){
+async function uploadArtwork35Slot(collection, number, option, file, minutesTaken, statusEl, btnEl){
   if(file.type!=='image/jpeg' && file.type!=='image/png' && file.type!=='application/pdf'){ statusEl.textContent='please upload a JPG, PNG or PDF file'; statusEl.style.color='#B3261E'; return; }
   if(file.size > 3*1024*1024){ statusEl.textContent='file too large (max 3MB)'; statusEl.style.color='#B3261E'; return; }
   btnEl.disabled=true; const prevText=btnEl.textContent; btnEl.textContent='uploading…';
@@ -726,7 +895,7 @@ async function uploadArtwork35Slot(collection, number, option, file, statusEl, b
     const b64=await fileToBase64(file);
     const r=await fetch(API+'/api/artwork35/upload',{
       method:'POST', headers:{'Content-Type':'application/json', ...authHeader()},
-      body:JSON.stringify({collection:collection, number:number, option:option, file:b64, filename:file.name, content_type:file.type||'application/octet-stream'})
+      body:JSON.stringify({collection:collection, number:number, option:option, file:b64, filename:file.name, content_type:file.type||'application/octet-stream', minutes_taken:minutesTaken})
     });
     const d=await parseJsonResponse(r);
     if(!r.ok) throw new Error(d.detail||'upload failed');
@@ -900,7 +1069,7 @@ async function toggleListening(){
       const b64=await blobToWavBase64(blob);
       const r=await fetch(API+'/api/explain/transcribe',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},authHeader()),
         body:JSON.stringify({audio:b64, mime_type:'audio/wav'})});
-      const d=await r.json();
+      const d=await parseJsonResponse(r, 'that recording was too long to send — try a shorter answer.');
       if(!r.ok) throw new Error(d.detail||'could not transcribe');
       const text=(d.transcript||'').trim();
       if(lt) lt.textContent='';
@@ -909,7 +1078,7 @@ async function toggleListening(){
     }catch(e){
       console.error('transcribe failed:', e);
       if(lt) lt.textContent='';
-      showMicError(null, 'could not transcribe your answer — check your connection and try again.');
+      showMicError(null, e.message||'could not transcribe your answer — check your connection and try again.');
     }
   };
   mediaRecorder.start();
