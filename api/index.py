@@ -111,18 +111,6 @@ ART35_PROJECTS = {
     ],
 }
 
-# Valid checklist item ids per section of the Art & Design observation form —
-# just enough to validate a submission's "checked" list against; the actual
-# labels/grouping/copy live once, in games-data.js's OBSERVATION_SECTIONS,
-# which only the frontend needs.
-OBSERVATION_SECTION_ITEMS = {
-    1: ["prep_materials", "prep_stations", "prep_objective", "age_language", "age_examples", "age_pace"],
-    2: ["instr_steps", "instr_naming", "instr_clarity", "instr_models", "challenge_up", "challenge_down",
-        "tech_drawing", "tech_mediums", "tech_skills"],
-    3: ["interact_guides", "interact_observes", "interact_feedback", "mgmt_rules", "mgmt_tone",
-        "mgmt_transitions", "close_wrapup", "close_reinforce", "close_cleanup"],
-}
-
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
 EXPLAIN_MIN_TURNS = 3
@@ -1022,69 +1010,6 @@ async def admin_artwork_restore(req: Request, authorization: Optional[str] = Hea
         _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
 
     return {"ok": True, "dry_run": dry_run, "restored": found, "already_present_untouched": skipped}
-
-
-# ---------- Art & Design observation checklist ----------
-
-@app.post("/api/observation/submit")
-async def observation_submit(req: Request, authorization: Optional[str] = Header(None)):
-    """Submits one section (1, 2 or 3) of the Art & Design observation
-    checklist for the signed-in trainee. Sections are sequential and final:
-    section N can only be submitted once section N-1 already has been, and a
-    section that's already been submitted can't be resubmitted or edited."""
-    role, phone = _check(authorization, {"trainee"})
-    trainee = _get_trainee(phone)
-    if not trainee:
-        raise HTTPException(404, "trainee not found")
-    if "art-design" not in _trainee_categories(trainee):
-        raise HTTPException(403, "the observation checklist is only for the art & design category")
-    b = await req.json()
-    try:
-        section = int(b.get("section"))
-    except (TypeError, ValueError):
-        raise HTTPException(400, "section must be a number")
-    if section not in OBSERVATION_SECTION_ITEMS:
-        raise HTTPException(400, "section must be 1, 2 or 3")
-    observation = trainee.get("observation") or {}
-    if str(section) in observation:
-        raise HTTPException(400, "this section has already been submitted")
-    if section > 1 and str(section - 1) not in observation:
-        raise HTTPException(400, f"submit section {section - 1} first")
-    valid_items = set(OBSERVATION_SECTION_ITEMS[section])
-    checked = [c for c in (b.get("checked") or []) if c in valid_items]
-    observation[str(section)] = {
-        "checked": checked,
-        "learnt": (b.get("learnt") or "").strip(),
-        "support": (b.get("support") or "").strip(),
-        "submitted_at": time.strftime("%Y-%m-%d %H:%M"),
-    }
-    trainee["observation"] = observation
-    _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
-    return {"ok": True, "observation": observation}
-
-
-@app.get("/api/observation/mine")
-async def observation_mine(authorization: Optional[str] = Header(None)):
-    role, phone = _check(authorization, {"trainee"})
-    trainee = _get_trainee(phone)
-    if not trainee:
-        raise HTTPException(404, "trainee not found")
-    if "art-design" not in _trainee_categories(trainee):
-        raise HTTPException(403, "the observation checklist is only for the art & design category")
-    return {"observation": trainee.get("observation") or {}}
-
-
-@app.get("/api/admin/observations")
-async def admin_observations(authorization: Optional[str] = Header(None)):
-    """Every trainee who has submitted at least one section of the
-    observation checklist, for the dashboard."""
-    _check(authorization, {"staff"})
-    trainees = _list_trainees()
-    return [
-        {"phone": t.get("phone"), "name": t.get("name"), "categories": _trainee_categories(t),
-         "observation": t.get("observation") or {}}
-        for t in trainees if t.get("observation")
-    ]
 
 
 # ---------- explanation quiz ----------
