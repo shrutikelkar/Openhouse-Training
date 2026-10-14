@@ -75,7 +75,11 @@ function art35Groups(collKey){
   return order.map(g=>({group:g, items:map[g]}));
 }
 function art35TechniqueLabel(item){ return item.title.split('—').slice(1).join('—').trim(); }
-const CATEGORIES=['art-design','public-speaking','robotics','music','chess','art-3-5','storytelling-3-5','stem-3-5'];
+const ALL_CATEGORIES=['art-design','public-speaking','robotics','music','chess','art-3-5','storytelling-3-5','stem-3-5'];
+// Narrowed after login for the category-scoped (PS / Art) dashboard logins; the
+// server enforces the same scope on every request, this only keeps the UI tidy.
+let CATEGORIES=ALL_CATEGORIES;
+let CAN_REMOVE_TRAINEES=true; // only the unrestricted staff login may remove trainees
 const CATEGORY_LABELS={'art-design':'Art & Design','public-speaking':'Public Speaking','robotics':'Robotics','music':'Music','chess':'Chess','art-3-5':'Art (3–5)','storytelling-3-5':'Language Through Storytelling (3–5)','stem-3-5':'STEM (3–5)'};
 function catLabel(c){ return CATEGORY_LABELS[c]||c; }
 function traineeCategories(t){ return (t.categories&&t.categories.length)?t.categories:(t.category?[t.category]:[]); }
@@ -678,7 +682,7 @@ function traineesTab(){
       html+='<tr><td><b>'+esc(t.name)+'</b></td><td>'+esc(t.phone)+'</td><td>'+catPills+'</td><td>'+fmtDate(t.cohort)+'</td>'
         +'<td>'+(total?done+' / '+total:'no games yet')+'</td>'
         +'<td><button class="ghost" data-approve-phone="'+esc(t.phone)+'" data-approve-next="'+(t.approved?'false':'true')+'" style="'+(t.approved?'background:var(--sage-tint);color:var(--sage);border-color:transparent':'')+'">'+(t.approved?'✓ approved':'approve download')+'</button></td>'
-        +'<td><button class="ghost" data-remove-phone="'+esc(t.phone)+'" data-remove-name="'+esc(t.name)+'" style="color:var(--stop)">remove</button></td></tr>';
+        +'<td>'+(CAN_REMOVE_TRAINEES?'<button class="ghost" data-remove-phone="'+esc(t.phone)+'" data-remove-name="'+esc(t.name)+'" style="color:var(--stop)">remove</button>':'')+'</td></tr>';
     });
     html+='</tbody></table></div>';
   }
@@ -997,6 +1001,46 @@ function ynBadge(pct){
   return '<span class="'+cls+'">'+pct+'%</span>';
 }
 
+const ARTWORK_SCORE_MAX=10;
+// "score" / "7/10" button for one submitted artwork. A score belongs to the
+// upload that was current when it was given, so a later resubmission shows ↻.
+function scoreCellHTML(scoreObj, versionCount, attrs, label){
+  const scored=scoreObj && scoreObj.score;
+  const stale=scored && (scoreObj.version||0) < versionCount;
+  const text=scored ? scoreObj.score+'/'+ARTWORK_SCORE_MAX+(stale?' ↻':'') : 'score';
+  const title=scored
+    ? (stale ? 'resubmitted since this was scored — click to rescore' : 'scored '+(scoreObj.scored_at||'')+(scoreObj.note?' — '+scoreObj.note:'')+' (click to change)')
+    : 'score this artwork';
+  return '<span class="ghost" style="cursor:pointer;font-size:10px;padding:1px 5px;border-radius:6px;'
+    +(scored&&!stale?'background:var(--sage-tint);color:var(--sage);border-color:transparent':'')+'" '
+    +'data-score-label="'+esc(label)+'" data-score-current="'+esc(scored?scoreObj.score:'')+'" data-score-note="'+esc(scoreObj&&scoreObj.note||'')+'" '
+    +attrs+' title="'+esc(title)+'">'+esc(text)+'</span>';
+}
+function bindScoreButtons(container, t){
+  container.querySelectorAll('[data-score-kind]').forEach(el=>{
+    el.onclick=async()=>{
+      const d=el.dataset;
+      const raw=prompt('Score for '+d.scoreLabel+' (1–'+ARTWORK_SCORE_MAX+'):', d.scoreCurrent||'');
+      if(raw===null) return;
+      const score=parseInt(raw,10);
+      if(!(score>=1 && score<=ARTWORK_SCORE_MAX)){ alert('Enter a whole number from 1 to '+ARTWORK_SCORE_MAX+'.'); return; }
+      const note=prompt('Note (optional):', d.scoreNote||'');
+      if(note===null) return;
+      const flat=d.scoreKind==='flat';
+      const body=flat
+        ? {phone:d.scorePhone, age_band:d.scoreBand, unit:Number(d.scoreUnit), score, note}
+        : {phone:d.scorePhone, collection:d.scoreCollection, number:Number(d.scoreNumber), option:d.scoreOption, score, note};
+      try{
+        const r=await fetch(API+(flat?'/api/admin/artwork/score':'/api/admin/artwork35/score'),{method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+t}, body:JSON.stringify(body)});
+        const res=await r.json();
+        if(!r.ok) throw new Error(res.detail||'could not save score');
+        artworkTab();
+      }catch(e){ alert(e.message||'could not save score'); }
+    };
+  });
+}
+
 async function artworkTab(){
   const modeRow=document.createElement('div'); modeRow.style.cssText='display:flex;gap:8px;margin-bottom:14px';
   const adBtn=document.createElement('button'); adBtn.className='tab'+(ARTWORK_VIEW==='art-design'?' active':''); adBtn.textContent='Art & Design';
@@ -1076,7 +1120,10 @@ async function artworkTab(){
             +(flagged
               ? '<span style="color:#B3261E" title="redo requested — waiting for resubmission">🔁</span>'
               : '<span class="ghost" style="cursor:pointer;font-size:10px;padding:1px 5px;border-radius:6px" '
-                +'data-redo-phone="'+esc(tr.phone)+'" data-redo-band="'+esc(band)+'" data-redo-unit="'+u+'" title="ask '+esc(tr.name||'')+' to redo this one">↺</span>');
+                +'data-redo-phone="'+esc(tr.phone)+'" data-redo-band="'+esc(band)+'" data-redo-unit="'+u+'" title="ask '+esc(tr.name||'')+' to redo this one">↺</span>')
+            +' '+scoreCellHTML(((entry && entry.scores && entry.scores[band])||{})[String(u)], versions.length,
+              'data-score-kind="flat" data-score-phone="'+esc(tr.phone)+'" data-score-band="'+esc(band)+'" data-score-unit="'+u+'"',
+              (tr.name||tr.phone)+' — unit '+u+' (ages '+band.replace('-','–')+')');
         } else if(flagged){
           cell='<span style="color:#B3261E" title="redo requested — waiting for resubmission">🔁</span>';
         } else {
@@ -1106,6 +1153,7 @@ async function artworkTab(){
       }catch(e){ alert(e.message||'could not send redo request'); }
     };
   });
+  bindScoreButtons(tableEl, t);
 }
 
 function renderArtwork35Table(rows, byPhone, t){
@@ -1156,7 +1204,10 @@ function renderArtwork35Table(rows, byPhone, t){
               +(flagged
                 ? '<span style="color:#B3261E" title="redo requested — waiting for resubmission">🔁</span>'
                 : '<span class="ghost" style="cursor:pointer;font-size:10px;padding:1px 5px;border-radius:6px" '
-                  +'data-redo35-phone="'+esc(tr.phone)+'" data-redo35-collection="'+esc(ck)+'" data-redo35-number="'+foundItem.number+'" data-redo35-option="'+esc(foundOption)+'" title="ask '+esc(tr.name||'')+' to redo this one">↺</span>');
+                  +'data-redo35-phone="'+esc(tr.phone)+'" data-redo35-collection="'+esc(ck)+'" data-redo35-number="'+foundItem.number+'" data-redo35-option="'+esc(foundOption)+'" title="ask '+esc(tr.name||'')+' to redo this one">↺</span>')
+                +' '+scoreCellHTML(((entry && entry.scores && entry.scores[ck])||{})[foundKey], versions.length,
+                  'data-score-kind="35" data-score-phone="'+esc(tr.phone)+'" data-score-collection="'+esc(ck)+'" data-score-number="'+foundItem.number+'" data-score-option="'+esc(foundOption)+'"',
+                  (tr.name||tr.phone)+' — '+techLabel+(foundItem.options.length>1?' — '+foundOption:''));
           } else {
             cell=sub+'<span style="color:#B3261E" title="redo requested — waiting for resubmission">🔁</span>';
           }
@@ -1185,6 +1236,7 @@ function renderArtwork35Table(rows, byPhone, t){
       }catch(e){ alert(e.message||'could not send redo request'); }
     };
   });
+  bindScoreButtons(tableEl, t);
 }
 
 function render(){
@@ -1193,7 +1245,8 @@ function render(){
   root.innerHTML='';
 
   const tabBar=document.createElement('div'); tabBar.className='tabs';
-  [{id:'trainees',label:'Trainees'},{id:'responses',label:'Responses'},{id:'accuracy',label:'Scores'},{id:'charts',label:'Charts'},{id:'artwork',label:'Artwork'}].forEach(t=>{
+  const hasArtwork=CATEGORIES.includes('art-design')||CATEGORIES.includes('art-3-5');
+  [{id:'trainees',label:'Trainees'},{id:'responses',label:'Responses'},{id:'accuracy',label:'Scores'},{id:'charts',label:'Charts'},...(hasArtwork?[{id:'artwork',label:'Artwork'}]:[])].forEach(t=>{
     const b=document.createElement('button'); b.className='tab'+(ACTIVE_TAB===t.id?' active':''); b.textContent=t.label;
     b.onclick=()=>{ ACTIVE_TAB=t.id; render(); };
     tabBar.appendChild(b);
@@ -1230,6 +1283,11 @@ async function load(){
     const r=await fetch(API+'/api/explanations',{headers:{'Authorization':'Bearer '+t}});
     if(r.status===401){ localStorage.removeItem(TK); loginView('Session expired — sign in again.'); return; }
     ALL=await r.json();
+    try{
+      const me=await fetch(API+'/api/admin/me',{headers:{'Authorization':'Bearer '+t}});
+      if(me.ok){ const d=await me.json(); CATEGORIES=d.categories||ALL_CATEGORIES; CAN_REMOVE_TRAINEES=!d.categories; }
+    }catch(e){}
+    if(ACTIVE_TAB==='artwork' && !(CATEGORIES.includes('art-design')||CATEGORIES.includes('art-3-5'))) ACTIVE_TAB='trainees';
     await loadTrainees();
     render();
   }catch(e){ root.innerHTML='<div class="empty">Could not load — is the server running?</div>'; }

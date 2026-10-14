@@ -15,7 +15,10 @@ Two roles:
 
 Accounts (env vars set in the Vercel dashboard — defaults below are
 placeholders, replace them before relying on this for anything real):
-  STAFF_EMAIL / STAFF_PASSWORD               — admin login
+  STAFF_EMAIL / STAFF_PASSWORD               — admin login (sees everything)
+  PS_EMAIL / PS_PASSWORD                     — dashboard login limited to public-speaking
+  ART_EMAIL / ART_PASSWORD                   — dashboard login limited to art-design + art-3-5
+             (PS/ART logins stay disabled until their *_PASSWORD is set)
   APP_SECRET                                  — any long random string (signs tokens)
   KV_REST_API_URL / KV_REST_API_TOKEN         (Vercel KV)   — OR
   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN  (Upstash)
@@ -57,6 +60,20 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 SECRET = os.environ.get("APP_SECRET", "change-me-before-deploy")
 STAFF_EMAIL = os.environ.get("STAFF_EMAIL", "staff@openhouse").strip().lower()
 STAFF_PASSWORD = os.environ.get("STAFF_PASSWORD", "oh.explaincheck")
+# Category-scoped dashboard logins. Unlike STAFF_PASSWORD there is deliberately
+# no fallback password: with the env var unset the login is simply disabled,
+# so nothing guessable (or visible in this public repo) can open it.
+PS_EMAIL = os.environ.get("PS_EMAIL", "ps@openhouse").strip().lower()
+PS_PASSWORD = os.environ.get("PS_PASSWORD", "")
+ART_EMAIL = os.environ.get("ART_EMAIL", "art@openhouse").strip().lower()
+ART_PASSWORD = os.environ.get("ART_PASSWORD", "")
+# Dashboard roles other than "staff" only ever see trainees / records whose
+# category is in their list; "staff" (absent from this dict) is unrestricted.
+ROLE_CATEGORIES = {
+    "ps": ["public-speaking"],
+    "art": ["art-design", "art-3-5"],
+}
+ADMIN_ROLES = {"staff", "ps", "art"}
 
 REDIS_URL = os.environ.get("KV_REST_API_URL") or os.environ.get("UPSTASH_REDIS_REST_URL")
 REDIS_TOKEN = os.environ.get("KV_REST_API_TOKEN") or os.environ.get("UPSTASH_REDIS_REST_TOKEN")
@@ -68,6 +85,7 @@ BLOB_API_BASE = "https://blob.vercel-storage.com"
 BLOB_API_VERSION = "10"
 ARTWORK_AGE_BANDS = ["5-8", "8-12"]
 ARTWORK_UNITS = 10
+ARTWORK_SCORE_MAX = 10  # staff score each artwork out of this
 ARTWORK_MAX_BYTES = 8 * 1024 * 1024  # 8MB per file
 
 # Art 3-5's artwork portfolio is shaped differently from the age-band/unit grid
@@ -282,6 +300,22 @@ def _get_trainee(phone: str) -> Optional[dict]:
     return json.loads(val) if val else None
 
 
+def _role_scope(role: str):
+    """Categories a dashboard role is limited to, or None for unrestricted."""
+    return ROLE_CATEGORIES.get(role)
+
+
+def _trainee_in_scope(role: str, trainee: dict) -> bool:
+    scope = _role_scope(role)
+    return scope is None or any(c in scope for c in _trainee_categories(trainee))
+
+
+def _require_trainee_in_scope(role: str, trainee: dict) -> None:
+    # 404 rather than 403 so a scoped login can't probe which phones exist outside its scope
+    if not _trainee_in_scope(role, trainee):
+        raise HTTPException(404, "trainee not found")
+
+
 def _list_trainees() -> list:
     res = _redis("HGETALL", TRAINEES_KEY)
     flat = res.get("result") or []
@@ -463,9 +497,21 @@ async def login(req: Request):
     b = await req.json()
     email = (b.get("email") or "").strip().lower()
     password = b.get("password") or ""
-    if email != STAFF_EMAIL or not hmac.compare_digest(password, STAFF_PASSWORD):
-        raise HTTPException(401, "wrong email or password")
-    return {"token": _make_token("staff")}
+    accounts = [("staff", STAFF_EMAIL, STAFF_PASSWORD), ("ps", PS_EMAIL, PS_PASSWORD), ("art", ART_EMAIL, ART_PASSWORD)]
+    for role, acct_email, acct_password in accounts:
+        if not acct_password or email != acct_email:
+            continue
+        if hmac.compare_digest(password.encode(), acct_password.encode()):
+            return {"token": _make_token(role), "role": role}
+    raise HTTPException(401, "wrong email or password")
+
+
+@app.get("/api/admin/me")
+async def admin_me(authorization: Optional[str] = Header(None)):
+    """Which dashboard login this is, and the categories it's limited to
+    (null for the unrestricted staff login)."""
+    role, _ = _check(authorization, ADMIN_ROLES)
+    return {"role": role, "categories": _role_scope(role)}
 
 
 @app.post("/api/trainee/login")
@@ -546,7 +592,7 @@ def _send_welcome_email(to_email: str, trainee: dict, site_url: str) -> bool:
 async def add_trainee(req: Request, authorization: Optional[str] = Header(None)):
     """PIN is not chosen by the admin — it's always derived from the cohort's
     start date as DDMM, so it's never trusted from the client."""
-    _check(authorization, {"staff"})
+    role, _ = _check(authorization, ADMIN_ROLES)
     b = await req.json()
     phone = (b.get("phone") or "").strip()
     name = (b.get("name") or "").strip()
@@ -565,6 +611,9 @@ async def add_trainee(req: Request, authorization: Optional[str] = Header(None))
     bad = [c for c in categories if c not in CATEGORIES]
     if bad:
         raise HTTPException(400, f"category must be one of {CATEGORIES}")
+    scope = _role_scope(role)
+    if scope is not None and any(c not in scope for c in categories):
+        raise HTTPException(403, f"this login can only add trainees in: {', '.join(scope)}")
     try:
         y, m, d = cohort.split("-")
         pin = f"{int(d):02d}{int(m):02d}"
@@ -577,6 +626,8 @@ async def add_trainee(req: Request, authorization: Optional[str] = Header(None))
     # about. Start from the existing record and only overlay the fields this
     # form actually edits, instead of replacing the record wholesale.
     existing = _get_trainee(phone)
+    if existing:
+        _require_trainee_in_scope(role, existing)
     rec = dict(existing) if existing else {}
     rec.update({
         "phone": phone, "name": name, "pin": pin,
@@ -596,13 +647,14 @@ async def add_trainee(req: Request, authorization: Optional[str] = Header(None))
 async def approve_trainee(req: Request, authorization: Optional[str] = Header(None)):
     """Marks a trainee's assessment as approved, unlocking their download.
     Toggleable — pass approved:false to revoke."""
-    _check(authorization, {"staff"})
+    role, _ = _check(authorization, ADMIN_ROLES)
     b = await req.json()
     phone = (b.get("phone") or "").strip()
     approved = bool(b.get("approved", True))
     trainee = _get_trainee(phone)
     if not trainee:
         raise HTTPException(404, "trainee not found")
+    _require_trainee_in_scope(role, trainee)
     trainee["approved"] = approved
     _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
     return {"ok": True, "trainee": trainee}
@@ -610,8 +662,8 @@ async def approve_trainee(req: Request, authorization: Optional[str] = Header(No
 
 @app.get("/api/admin/trainees")
 async def list_trainees(authorization: Optional[str] = Header(None)):
-    _check(authorization, {"staff"})
-    return _list_trainees()
+    role, _ = _check(authorization, ADMIN_ROLES)
+    return [t for t in _list_trainees() if _trainee_in_scope(role, t)]
 
 
 @app.delete("/api/admin/trainees/{phone}")
@@ -636,8 +688,9 @@ async def remove_trainee(phone: str, delete_data: bool = False, authorization: O
 
 @app.get("/api/admin/categories")
 async def get_categories(authorization: Optional[str] = Header(None)):
-    _check(authorization, {"staff"})
-    return CATEGORIES
+    role, _ = _check(authorization, ADMIN_ROLES)
+    scope = _role_scope(role)
+    return CATEGORIES if scope is None else [c for c in CATEGORIES if c in scope]
 
 
 # ---------- artwork uploads ----------
@@ -732,12 +785,13 @@ async def artwork_mine(authorization: Optional[str] = Header(None)):
 async def admin_artwork(authorization: Optional[str] = Header(None)):
     """Every trainee who has uploaded at least one piece of artwork, or has a
     pending redo request, for the dashboard's artwork view."""
-    _check(authorization, {"staff"})
-    trainees = _list_trainees()
+    role, _ = _check(authorization, ADMIN_ROLES)
+    trainees = [t for t in _list_trainees() if _trainee_in_scope(role, t)]
     return [
         {
             "phone": t.get("phone"), "name": t.get("name"), "categories": _trainee_categories(t),
             "artwork": t.get("artwork") or {}, "redo": t.get("artwork_redo") or {},
+            "scores": t.get("artwork_scores") or {},
         }
         for t in trainees if t.get("artwork") or t.get("artwork_redo")
     ]
@@ -749,7 +803,7 @@ async def admin_artwork_redo(req: Request, authorization: Optional[str] = Header
     is left in place (still viewable) — only the flag is set, so the trainee
     sees why; resubmitting via /api/artwork/upload overwrites the old file
     at the same pathname and clears the flag automatically."""
-    _check(authorization, {"staff"})
+    role, _ = _check(authorization, ADMIN_ROLES)
     b = await req.json()
     phone = (b.get("phone") or "").strip()
     age_band = (b.get("age_band") or "").strip()
@@ -765,6 +819,7 @@ async def admin_artwork_redo(req: Request, authorization: Optional[str] = Header
     trainee = _get_trainee(phone)
     if not trainee:
         raise HTTPException(404, "trainee not found")
+    _require_trainee_in_scope(role, trainee)
 
     redo = trainee.get("artwork_redo") or {}
     band_redo = redo.get(age_band) or []
@@ -873,12 +928,13 @@ async def artwork35_mine(authorization: Optional[str] = Header(None)):
 async def admin_artwork35(authorization: Optional[str] = Header(None)):
     """Every trainee who has uploaded at least one Art 3-5 piece, or has a
     pending redo request, for the dashboard's artwork view."""
-    _check(authorization, {"staff"})
-    trainees = _list_trainees()
+    role, _ = _check(authorization, ADMIN_ROLES)
+    trainees = [t for t in _list_trainees() if _trainee_in_scope(role, t)]
     return [
         {
             "phone": t.get("phone"), "name": t.get("name"), "categories": _trainee_categories(t),
             "artwork35": t.get("artwork35") or {}, "redo": t.get("artwork35_redo") or {},
+            "scores": t.get("artwork35_scores") or {},
         }
         for t in trainees if t.get("artwork35") or t.get("artwork35_redo")
     ]
@@ -889,7 +945,7 @@ async def admin_artwork35_redo(req: Request, authorization: Optional[str] = Head
     """Staff asks a trainee to redo one Art 3-5 artwork. The current submission
     is left in place (still viewable) — only the flag is set, so the trainee
     sees why; resubmitting via /api/artwork35/upload clears the flag automatically."""
-    _check(authorization, {"staff"})
+    role, _ = _check(authorization, ADMIN_ROLES)
     b = await req.json()
     phone = (b.get("phone") or "").strip()
     collection = (b.get("collection") or "").strip()
@@ -906,6 +962,7 @@ async def admin_artwork35_redo(req: Request, authorization: Optional[str] = Head
     trainee = _get_trainee(phone)
     if not trainee:
         raise HTTPException(404, "trainee not found")
+    _require_trainee_in_scope(role, trainee)
 
     redo = trainee.get("artwork35_redo") or {}
     coll_redo = redo.get(collection) or []
@@ -916,6 +973,92 @@ async def admin_artwork35_redo(req: Request, authorization: Optional[str] = Head
 
     _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
     return {"ok": True, "artwork35": trainee.get("artwork35") or {}, "redo": redo}
+
+
+def _parse_artwork_score(b: dict):
+    try:
+        score = int(b.get("score"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "score must be a whole number")
+    if not (1 <= score <= ARTWORK_SCORE_MAX):
+        raise HTTPException(400, f"score must be between 1 and {ARTWORK_SCORE_MAX}")
+    return score, (b.get("note") or "").strip()[:500]
+
+
+@app.post("/api/admin/artwork/score")
+async def admin_artwork_score(req: Request, authorization: Optional[str] = Header(None)):
+    """Scores one Art & Design artwork (age band + unit) out of
+    ARTWORK_SCORE_MAX, with an optional note. The score belongs to the
+    submission that was current when it was given: `version` records how many
+    uploads existed then, so a later resubmission is visibly unscored again.
+    Kept separate from the artwork history, and never returned to trainees."""
+    role, _ = _check(authorization, ADMIN_ROLES)
+    b = await req.json()
+    phone = (b.get("phone") or "").strip()
+    age_band = (b.get("age_band") or "").strip()
+    if age_band not in ARTWORK_AGE_BANDS:
+        raise HTTPException(400, f"age_band must be one of {ARTWORK_AGE_BANDS}")
+    try:
+        unit = int(b.get("unit"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "unit must be a number")
+    score, note = _parse_artwork_score(b)
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+    _require_trainee_in_scope(role, trainee)
+    history = ((trainee.get("artwork") or {}).get(age_band) or {}).get(str(unit))
+    versions = history if isinstance(history, list) else ([history] if history else [])
+    if not versions:
+        raise HTTPException(400, "nothing has been submitted for this unit yet")
+    scores = trainee.get("artwork_scores") or {}
+    band_scores = scores.get(age_band) or {}
+    band_scores[str(unit)] = {
+        "score": score, "note": note, "version": len(versions),
+        "scored_at": time.strftime("%Y-%m-%d %H:%M"), "scored_by": role,
+    }
+    scores[age_band] = band_scores
+    trainee["artwork_scores"] = scores
+    _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
+    return {"ok": True, "scores": scores}
+
+
+@app.post("/api/admin/artwork35/score")
+async def admin_artwork35_score(req: Request, authorization: Optional[str] = Header(None)):
+    """Same as /api/admin/artwork/score, for one Art 3-5 artwork (collection +
+    number + option)."""
+    role, _ = _check(authorization, ADMIN_ROLES)
+    b = await req.json()
+    phone = (b.get("phone") or "").strip()
+    collection = (b.get("collection") or "").strip()
+    option = (b.get("option") or "").strip()
+    try:
+        number = int(b.get("number"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "number must be a number")
+    entry = _art35_entry(collection, number)
+    if option not in entry["options"]:
+        raise HTTPException(400, f"option must be one of {entry['options']}")
+    score, note = _parse_artwork_score(b)
+    slot = f"{number}::{option}"
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+    _require_trainee_in_scope(role, trainee)
+    history = ((trainee.get("artwork35") or {}).get(collection) or {}).get(slot)
+    versions = history if isinstance(history, list) else ([history] if history else [])
+    if not versions:
+        raise HTTPException(400, "nothing has been submitted for this artwork yet")
+    scores = trainee.get("artwork35_scores") or {}
+    coll_scores = scores.get(collection) or {}
+    coll_scores[slot] = {
+        "score": score, "note": note, "version": len(versions),
+        "scored_at": time.strftime("%Y-%m-%d %H:%M"), "scored_by": role,
+    }
+    scores[collection] = coll_scores
+    trainee["artwork35_scores"] = scores
+    _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
+    return {"ok": True, "scores": scores}
 
 
 @app.post("/api/admin/artwork/restore")
@@ -1437,22 +1580,27 @@ async def explain_save(req: Request, authorization: Optional[str] = Header(None)
 
 @app.get("/api/explanations")
 async def list_explanations(authorization: Optional[str] = Header(None)):
-    _check(authorization, {"staff"})
+    role, _ = _check(authorization, ADMIN_ROLES)
     res = _redis("LRANGE", EXPLAIN_LIST_KEY, "0", "999")
     rows = res.get("result") or []
-    return [json.loads(x) for x in rows]
+    scope = _role_scope(role)
+    records = [json.loads(x) for x in rows]
+    return records if scope is None else [r for r in records if r.get("category") in scope]
 
 
-def _mutate_explanation_record(record_id: str, mutate) -> dict:
+def _mutate_explanation_record(record_id: str, mutate, role: str = "staff") -> dict:
     """Finds one explanation record by id, applies `mutate` to it in place,
     and rewrites the whole list back to Redis (there's no per-item update in
     this REST API, only whole-list ops). Raises 404 if not found."""
     res = _redis("LRANGE", EXPLAIN_LIST_KEY, "0", "999")
     rows = res.get("result") or []
     all_recs = [json.loads(x) for x in rows]
+    scope = _role_scope(role)
     found = None
     for r in all_recs:
         if r.get("id") == record_id:
+            if scope is not None and r.get("category") not in scope:
+                raise HTTPException(404, "record not found")
             mutate(r)
             found = r
             break
@@ -1468,14 +1616,14 @@ async def edit_explanation_feedback(record_id: str, req: Request, authorization:
     """Lets staff correct the trainee-facing strengths/improvements text before
     approving a download — the same text the trainee sees on screen and in
     their downloaded assessment."""
-    _check(authorization, {"staff"})
+    role, _ = _check(authorization, ADMIN_ROLES)
     b = await req.json()
 
     def mutate(r):
         r["strengths"] = b.get("strengths") or ""
         r["improvements"] = b.get("improvements") or []
 
-    record = _mutate_explanation_record(record_id, mutate)
+    record = _mutate_explanation_record(record_id, mutate, role)
     return {"ok": True, "record": record}
 
 
@@ -1483,13 +1631,13 @@ async def edit_explanation_feedback(record_id: str, req: Request, authorization:
 async def edit_explanation_comment(record_id: str, req: Request, authorization: Optional[str] = Header(None)):
     """An admin-only internal note on a response — never shown to the trainee
     and never included in their downloaded assessment."""
-    _check(authorization, {"staff"})
+    role, _ = _check(authorization, ADMIN_ROLES)
     b = await req.json()
 
     def mutate(r):
         r["admin_comment"] = (b.get("comment") or "").strip()
 
-    record = _mutate_explanation_record(record_id, mutate)
+    record = _mutate_explanation_record(record_id, mutate, role)
     return {"ok": True, "record": record}
 
 
