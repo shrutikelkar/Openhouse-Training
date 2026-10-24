@@ -1016,6 +1016,26 @@ function scoreCellHTML(scoreObj, versionCount, attrs, label){
     +'data-score-label="'+esc(label)+'" data-score-current="'+esc(scored?scoreObj.score:'')+'" data-score-note="'+esc(scoreObj&&scoreObj.note||'')+'" '
     +attrs+' title="'+esc(title)+'">'+esc(text)+'</span>';
 }
+// Only a score given to an artwork's CURRENT upload counts toward averages — one
+// that was given before a resubmission (shown with ↻) is out of date.
+function currentScore(scoreObj, versionCount){
+  return (scoreObj && scoreObj.score && (scoreObj.version||0) >= versionCount) ? Number(scoreObj.score) : null;
+}
+function avgText(list){
+  return list.length ? '<b>'+(list.reduce((a,b)=>a+b,0)/list.length).toFixed(1)+'</b>' : '<span class="muted">—</span>';
+}
+function avgHeaderCell(DIVIDER){
+  return '<th rowspan="2" style="text-align:center;'+DIVIDER+'" title="average of this trainee\'s scores (out of '+ARTWORK_SCORE_MAX+')">avg</th>';
+}
+function avgRowCell(list, DIVIDER){
+  return '<td style="text-align:center;'+DIVIDER+'">'+avgText(list)+'</td>';
+}
+// last row of the table: the average of each column across all trainees, plus the overall average
+function avgSummaryRow(colScores, allScores, dividerCols, DIVIDER){
+  return '<tr style="border-top:2px solid var(--line);background:var(--subtle)"><td><b>average — all trainees</b></td>'
+    +colScores.map((list,i)=>'<td style="text-align:center;'+(dividerCols.has(i)?DIVIDER:'')+'">'+avgText(list)+'</td>').join('')
+    +'<td style="text-align:center;'+DIVIDER+'" title="average of every current score, out of '+ARTWORK_SCORE_MAX+'">'+avgText(allScores)+'</td></tr>';
+}
 function bindScoreButtons(container, t){
   container.querySelectorAll('[data-score-kind]').forEach(el=>{
     el.onclick=async()=>{
@@ -1047,7 +1067,9 @@ async function artworkTab(){
   adBtn.onclick=()=>{ ARTWORK_VIEW='art-design'; render(); };
   const a35Btn=document.createElement('button'); a35Btn.className='tab'+(ARTWORK_VIEW==='art-3-5'?' active':''); a35Btn.textContent='Art 3-5';
   a35Btn.onclick=()=>{ ARTWORK_VIEW='art-3-5'; render(); };
-  modeRow.append(adBtn,a35Btn);
+  // only offer the artwork views this login is allowed to see
+  modeRow.append(...[CATEGORIES.includes('art-design')?adBtn:null, CATEGORIES.includes('art-3-5')?a35Btn:null].filter(Boolean));
+  if(!CATEGORIES.includes(ARTWORK_VIEW)) ARTWORK_VIEW=CATEGORIES.includes('art-design')?'art-design':'art-3-5';
   root.appendChild(modeRow);
 
   const t=localStorage.getItem(TK);
@@ -1094,12 +1116,14 @@ async function artworkTab(){
   const DIVIDER='border-left:3px solid var(--coral);';
   const unitHeaderRow=withDivider=>Array.from({length:ARTWORK_UNITS},(_,i)=>'<th'+(withDivider&&i===0?' style="'+DIVIDER+'"':'')+'>u'+(i+1)+'</th>').join('');
   let html='<div class="table-wrap"><table class="sum-table"><thead>'
-    +'<tr><th rowspan="2">name</th><th colspan="'+ARTWORK_UNITS+'" style="text-align:center">ages 5–8</th><th colspan="'+ARTWORK_UNITS+'" style="text-align:center;'+DIVIDER+'">ages 8–12</th></tr>'
+    +'<tr><th rowspan="2">name</th><th colspan="'+ARTWORK_UNITS+'" style="text-align:center">ages 5–8</th><th colspan="'+ARTWORK_UNITS+'" style="text-align:center;'+DIVIDER+'">ages 8–12</th>'+avgHeaderCell(DIVIDER)+'</tr>'
     +'<tr>'+unitHeaderRow(false)+unitHeaderRow(true)+'</tr>'
     +'</thead><tbody>';
+  const colScores=Array.from({length:ARTWORK_AGE_BANDS.length*ARTWORK_UNITS},()=>[]), allScores=[];
   rows.forEach(tr=>{
     const entry=byPhone[tr.phone];
     html+='<tr><td><b>'+esc(tr.name||tr.phone)+'</b></td>';
+    const rowScores=[];
     ARTWORK_AGE_BANDS.forEach((band,bandIdx)=>{
       const units=(entry && entry.artwork && entry.artwork[band])||{};
       const redoUnits=(entry && entry.redo && entry.redo[band])||[];
@@ -1108,6 +1132,8 @@ async function artworkTab(){
         const versions=Array.isArray(raw)?raw:(raw?[raw]:[]);
         const divider=(bandIdx===1 && u===1)?DIVIDER:'';
         const flagged=redoUnits.includes(u);
+        const sc=versions.length ? currentScore(((entry && entry.scores && entry.scores[band])||{})[String(u)], versions.length) : null;
+        if(sc!==null){ rowScores.push(sc); colScores[bandIdx*ARTWORK_UNITS+u-1].push(sc); allScores.push(sc); }
         let cell;
         if(versions.length){
           const links=versions.map((v,i)=>{
@@ -1132,8 +1158,9 @@ async function artworkTab(){
         html+='<td style="text-align:center;'+divider+'">'+cell+'</td>';
       }
     });
-    html+='</tr>';
+    html+=avgRowCell(rowScores, DIVIDER)+'</tr>';
   });
+  html+=avgSummaryRow(colScores, allScores, new Set([ARTWORK_UNITS]), DIVIDER);
   html+='</tbody></table></div>';
   const wrap=document.createElement('div'); wrap.innerHTML=html;
   const tableEl=wrap.firstElementChild;
@@ -1163,12 +1190,15 @@ function renderArtwork35Table(rows, byPhone, t){
   let html='<div class="table-wrap"><table class="sum-table"><thead>'
     +'<tr><th rowspan="2">name</th>'
     +collKeys.map((ck,i)=>'<th colspan="'+groups[ck].length+'" style="text-align:center;'+(i>0?DIVIDER:'')+'">'+esc(ART35_PROJECTS_ADMIN[ck].label)+'</th>').join('')
-    +'</tr><tr>'
+    +avgHeaderCell(DIVIDER)+'</tr><tr>'
     +collKeys.map((ck,i)=>groups[ck].map((g,j)=>'<th'+(i>0&&j===0?' style="'+DIVIDER+'"':'')+' title="one of: '+esc(g.items.map(it=>it.title).join(', '))+'">'+esc(g.group)+'</th>').join('')).join('')
     +'</tr></thead><tbody>';
+  const colScores=Array.from({length:collKeys.reduce((n,ck)=>n+groups[ck].length,0)},()=>[]), allScores=[];
+  const dividerCols=new Set(); { let n=0; collKeys.forEach((ck,ci)=>{ if(ci>0) dividerCols.add(n); n+=groups[ck].length; }); }
   rows.forEach(tr=>{
     const entry=byPhone[tr.phone];
     html+='<tr><td><b>'+esc(tr.name||tr.phone)+'</b></td>';
+    const rowScores=[]; let colIdx=0;
     collKeys.forEach((ck,collIdx)=>{
       const slotData=(entry && entry.artwork35 && entry.artwork35[ck])||{};
       const redoSlots=(entry && entry.redo && entry.redo[ck])||[];
@@ -1191,6 +1221,8 @@ function renderArtwork35Table(rows, byPhone, t){
           const raw=slotData[foundKey];
           const versions=Array.isArray(raw)?raw:(raw?[raw]:[]);
           const flagged=redoSlots.includes(foundKey);
+          const sc=versions.length ? currentScore(((entry && entry.scores && entry.scores[ck])||{})[foundKey], versions.length) : null;
+          if(sc!==null){ rowScores.push(sc); colScores[colIdx].push(sc); allScores.push(sc); }
           const techLabel=art35TechniqueLabel(foundItem);
           const sub='<div class="muted" style="font-size:10px;margin-bottom:2px">'+esc(foundItem.options.length>1?techLabel+' — '+foundOption:techLabel)+'</div>';
           if(versions.length){
@@ -1213,10 +1245,12 @@ function renderArtwork35Table(rows, byPhone, t){
           }
         }
         html+='<td style="text-align:center;'+divider+'">'+cell+'</td>';
+        colIdx++;
       });
     });
-    html+='</tr>';
+    html+=avgRowCell(rowScores, DIVIDER)+'</tr>';
   });
+  html+=avgSummaryRow(colScores, allScores, dividerCols, DIVIDER);
   html+='</tbody></table></div>';
   const wrap=document.createElement('div'); wrap.innerHTML=html;
   const tableEl=wrap.firstElementChild;
@@ -1239,6 +1273,76 @@ function renderArtwork35Table(rows, byPhone, t){
   bindScoreButtons(tableEl, t);
 }
 
+async function observationsTab(){
+  const t=localStorage.getItem(TK);
+  const loading=document.createElement('div'); loading.className='empty'; loading.textContent='loading observations…';
+  root.appendChild(loading);
+  let data=[];
+  try{
+    const r=await fetch(API+'/api/admin/observations',{headers:{'Authorization':'Bearer '+t}});
+    data = r.ok ? await r.json() : [];
+  }catch(e){}
+  loading.remove();
+  if(ACTIVE_TAB!=='observations') return; // admin switched tabs while this was loading
+
+  const sections=window.OBSERVATION_SECTIONS||[];
+  const byPhone={}; data.forEach(entry=>{ byPhone[entry.phone]=entry; });
+  const rows=TRAINEES
+    .filter(tr=>traineeCategories(tr).includes('art-design'))
+    .filter(tr=>!TRAINEE_FILTER||tr.name===TRAINEE_FILTER)
+    .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+
+  if(!rows.length){
+    const empty=document.createElement('div'); empty.className='empty'; empty.textContent='No art & design trainees match this filter.';
+    root.appendChild(empty);
+    return;
+  }
+
+  const fmt=iso=>{ const d=new Date((iso||'')+'T00:00:00'); return isNaN(d)?(iso||'—'):d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); };
+  rows.forEach(tr=>{
+    const entry=byPhone[tr.phone];
+    const observation=(entry && entry.observation)||{};
+    // a pointer is observed once it's ticked in any section's session (missed ones carry forward)
+    const observedAll=new Set();
+    Object.values(observation).forEach(sec=>((sec&&sec.sessions)||[]).forEach(s=>(s.checked||[]).forEach(id=>observedAll.add(id))));
+    const card=document.createElement('div'); card.className='card'; card.style.marginBottom='12px';
+    const nameEl=document.createElement('div'); nameEl.style.cssText='font-weight:800;font-size:15px;margin-bottom:8px';
+    nameEl.textContent=tr.name||tr.phone;
+    card.appendChild(nameEl);
+
+    sections.forEach((section,i)=>{
+      const sectionNum=i+1;
+      const sessions=((observation[String(sectionNum)]||{}).sessions)||[];
+      const sTitle=document.createElement('div'); sTitle.style.cssText='font-weight:700;font-size:12.5px;margin-top:10px';
+      sTitle.textContent='Session '+sectionNum+' — '+section.title;
+      card.appendChild(sTitle);
+      if(!sessions.length){
+        const none=document.createElement('div'); none.className='muted'; none.style.fontSize='12.5px';
+        none.textContent='not yet submitted';
+        card.appendChild(none);
+        return;
+      }
+      const allItems=section.groups.flatMap(g=>g.items);
+      const labelById={}; sections.forEach(sec=>sec.groups.forEach(g=>g.items.forEach(it=>{ labelById[it.id]=it.label; })));
+      const missed=allItems.filter(it=>!observedAll.has(it.id));
+      const meta=document.createElement('div'); meta.className='muted'; meta.style.fontSize='11.5px';
+      meta.textContent=(allItems.length-missed.length)+'/'+allItems.length+' observed'
+        +(missed.length?' · still to observe: '+missed.map(m=>m.label).join('; '):' · all observed');
+      card.appendChild(meta);
+      [...sessions].sort((a,b)=>String(a.date).localeCompare(String(b.date))).forEach(s=>{
+        const line=document.createElement('div'); line.style.cssText='font-size:12.5px;margin-top:6px;padding-left:8px;border-left:2px solid var(--line)';
+        line.innerHTML='<b>'+esc(fmt(s.date))+'</b> <span class="muted">· '+(s.checked||[]).length+' pointer'+((s.checked||[]).length===1?'':'s')
+          +((s.checked||[]).length?': '+esc((s.checked||[]).map(id=>labelById[id]||id).join('; ')):'')+'</span>'
+          +(s.learnt?'<div><b>Learnt:</b> '+esc(s.learnt)+'</div>':'')
+          +((s.photos||[]).length?'<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:6px">'+(s.photos||[]).map(u=>'<a href="'+esc(u)+'" target="_blank" rel="noopener"><img src="'+esc(u)+'" alt="" style="height:56px;width:56px;object-fit:cover;border-radius:6px"></a>').join('')+'</div>':'')
+          +(s.support?'<div><b>Needs support:</b> '+esc(s.support)+'</div>':'');
+        card.appendChild(line);
+      });
+    });
+    root.appendChild(card);
+  });
+}
+
 function render(){
   document.getElementById('signout').style.display='inline-block';
   syncTraineePicker();
@@ -1246,7 +1350,8 @@ function render(){
 
   const tabBar=document.createElement('div'); tabBar.className='tabs';
   const hasArtwork=CATEGORIES.includes('art-design')||CATEGORIES.includes('art-3-5');
-  [{id:'trainees',label:'Trainees'},{id:'responses',label:'Responses'},{id:'accuracy',label:'Scores'},{id:'charts',label:'Charts'},...(hasArtwork?[{id:'artwork',label:'Artwork'}]:[])].forEach(t=>{
+  const hasObservations=CATEGORIES.includes('art-design');
+  [{id:'trainees',label:'Trainees'},{id:'accuracy',label:'Scores'},{id:'responses',label:'Responses'},...(hasObservations?[{id:'observations',label:'Observations'}]:[]),{id:'charts',label:'Charts'},...(hasArtwork?[{id:'artwork',label:'Artwork'}]:[])].forEach(t=>{
     const b=document.createElement('button'); b.className='tab'+(ACTIVE_TAB===t.id?' active':''); b.textContent=t.label;
     b.onclick=()=>{ ACTIVE_TAB=t.id; render(); };
     tabBar.appendChild(b);
@@ -1255,6 +1360,7 @@ function render(){
 
   if(ACTIVE_TAB==='trainees'){ traineesTab(); return; }
   if(ACTIVE_TAB==='artwork'){ artworkTab(); return; }
+  if(ACTIVE_TAB==='observations'){ observationsTab(); return; }
   if(ACTIVE_TAB==='accuracy'){ accuracyTab(); return; }
   if(ACTIVE_TAB==='charts'){ chartsTab(); return; }
   if(!ALL.length){

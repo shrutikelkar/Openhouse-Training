@@ -71,7 +71,7 @@ ART_PASSWORD = os.environ.get("ART_PASSWORD", "")
 # category is in their list; "staff" (absent from this dict) is unrestricted.
 ROLE_CATEGORIES = {
     "ps": ["public-speaking"],
-    "art": ["art-design", "art-3-5"],
+    "art": ["art-design"],
 }
 ADMIN_ROLES = {"staff", "ps", "art"}
 
@@ -127,6 +127,18 @@ ART35_PROJECTS = {
         {"number": 16, "title": "Taro Gomi — Draw & Colour 1", "options": ["Session 1"]},
         {"number": 17, "title": "Taro Gomi — Draw & Colour 2", "options": ["Session 1"]},
     ],
+}
+
+# Valid checklist item ids per section of the Art & Design observation form —
+# just enough to validate a submission's "checked" list against; the actual
+# labels/grouping/copy live once, in games-data.js's OBSERVATION_SECTIONS,
+# which only the frontend needs.
+OBSERVATION_SECTION_ITEMS = {
+    1: ["prep_materials", "prep_stations", "prep_objective", "age_language", "age_examples", "age_pace"],
+    2: ["instr_steps", "instr_naming", "instr_clarity", "instr_models", "challenge_up", "challenge_down",
+        "tech_drawing", "tech_mediums", "tech_skills"],
+    3: ["interact_guides", "interact_observes", "interact_feedback", "mgmt_rules", "mgmt_tone",
+        "mgmt_transitions", "close_wrapup", "close_reinforce", "close_cleanup"],
 }
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -308,6 +320,18 @@ def _role_scope(role: str):
 def _trainee_in_scope(role: str, trainee: dict) -> bool:
     scope = _role_scope(role)
     return scope is None or any(c in scope for c in _trainee_categories(trainee))
+
+
+def _role_has_category(role: str, category: str) -> bool:
+    scope = _role_scope(role)
+    return scope is None or category in scope
+
+
+def _require_category_in_scope(role: str, category: str) -> None:
+    # artwork / observations belong to one category; being in scope for some
+    # other category a trainee also holds must not open them up
+    if not _role_has_category(role, category):
+        raise HTTPException(404, "not found")
 
 
 def _require_trainee_in_scope(role: str, trainee: dict) -> None:
@@ -786,6 +810,8 @@ async def admin_artwork(authorization: Optional[str] = Header(None)):
     """Every trainee who has uploaded at least one piece of artwork, or has a
     pending redo request, for the dashboard's artwork view."""
     role, _ = _check(authorization, ADMIN_ROLES)
+    if not _role_has_category(role, "art-design"):
+        return []
     trainees = [t for t in _list_trainees() if _trainee_in_scope(role, t)]
     return [
         {
@@ -804,6 +830,7 @@ async def admin_artwork_redo(req: Request, authorization: Optional[str] = Header
     sees why; resubmitting via /api/artwork/upload overwrites the old file
     at the same pathname and clears the flag automatically."""
     role, _ = _check(authorization, ADMIN_ROLES)
+    _require_category_in_scope(role, "art-design")
     b = await req.json()
     phone = (b.get("phone") or "").strip()
     age_band = (b.get("age_band") or "").strip()
@@ -929,6 +956,8 @@ async def admin_artwork35(authorization: Optional[str] = Header(None)):
     """Every trainee who has uploaded at least one Art 3-5 piece, or has a
     pending redo request, for the dashboard's artwork view."""
     role, _ = _check(authorization, ADMIN_ROLES)
+    if not _role_has_category(role, "art-3-5"):
+        return []
     trainees = [t for t in _list_trainees() if _trainee_in_scope(role, t)]
     return [
         {
@@ -946,6 +975,7 @@ async def admin_artwork35_redo(req: Request, authorization: Optional[str] = Head
     is left in place (still viewable) — only the flag is set, so the trainee
     sees why; resubmitting via /api/artwork35/upload clears the flag automatically."""
     role, _ = _check(authorization, ADMIN_ROLES)
+    _require_category_in_scope(role, "art-3-5")
     b = await req.json()
     phone = (b.get("phone") or "").strip()
     collection = (b.get("collection") or "").strip()
@@ -993,6 +1023,7 @@ async def admin_artwork_score(req: Request, authorization: Optional[str] = Heade
     uploads existed then, so a later resubmission is visibly unscored again.
     Kept separate from the artwork history, and never returned to trainees."""
     role, _ = _check(authorization, ADMIN_ROLES)
+    _require_category_in_scope(role, "art-design")
     b = await req.json()
     phone = (b.get("phone") or "").strip()
     age_band = (b.get("age_band") or "").strip()
@@ -1028,6 +1059,7 @@ async def admin_artwork35_score(req: Request, authorization: Optional[str] = Hea
     """Same as /api/admin/artwork/score, for one Art 3-5 artwork (collection +
     number + option)."""
     role, _ = _check(authorization, ADMIN_ROLES)
+    _require_category_in_scope(role, "art-3-5")
     b = await req.json()
     phone = (b.get("phone") or "").strip()
     collection = (b.get("collection") or "").strip()
@@ -1153,6 +1185,201 @@ async def admin_artwork_restore(req: Request, authorization: Optional[str] = Hea
         _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
 
     return {"ok": True, "dry_run": dry_run, "restored": found, "already_present_untouched": skipped}
+
+
+# ---------- Art & Design observation checklist ----------
+
+def _observation_sessions(section_rec) -> list:
+    """Sessions a trainee has logged for one section. Records made before
+    sessions existed were one flat submission — treated as a single session."""
+    if not isinstance(section_rec, dict):
+        return []
+    if isinstance(section_rec.get("sessions"), list):
+        return section_rec["sessions"]
+    if "checked" in section_rec:
+        return [{
+            "date": (section_rec.get("submitted_at") or "")[:10],
+            "checked": section_rec.get("checked") or [],
+            "learnt": section_rec.get("learnt") or "",
+            "support": section_rec.get("support") or "",
+            "submitted_at": section_rec.get("submitted_at") or "",
+        }]
+    return []
+
+
+def _observation_view(observation) -> dict:
+    out = {}
+    for sec, rec in (observation or {}).items():
+        sessions = _observation_sessions(rec)
+        if sessions:
+            out[sec] = {"sessions": sessions}
+    return out
+
+
+OBSERVATION_MAX_PHOTOS = 4  # per entry, sessions 2 and 3 only
+
+
+def _is_own_observation_photo(url, phone: str) -> bool:
+    """Only accept picture URLs this app's own Blob store handed out for this
+    trainee — the submit body is client-supplied, so it's never trusted as-is."""
+    if not isinstance(url, str) or not url.startswith("https://"):
+        return False
+    host = url[len("https://"):].split("/", 1)[0]
+    return host.endswith(".blob.vercel-storage.com") and f"/observation/{phone}/" in url
+
+
+@app.post("/api/observation/photo")
+async def observation_photo(req: Request, authorization: Optional[str] = Header(None)):
+    """Uploads one picture for a later observation session and returns its
+    URL; the session submit then references it. One picture per request keeps
+    each body well under Vercel's ~4.5MB request limit."""
+    role, phone = _check(authorization, {"trainee"})
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+    if "art-design" not in _trainee_categories(trainee):
+        raise HTTPException(403, "the observation checklist is only for the art & design category")
+    b = await req.json()
+    content_type = (b.get("content_type") or "").strip()
+    if content_type not in ("image/jpeg", "image/png"):
+        raise HTTPException(400, "picture must be a JPG or PNG")
+    try:
+        data = base64.b64decode(b.get("file") or "")
+    except Exception:
+        raise HTTPException(400, "invalid file data")
+    if not data:
+        raise HTTPException(400, "no picture provided")
+    if len(data) > 3 * 1024 * 1024:
+        raise HTTPException(400, "picture too large (max 3MB)")
+    ext = ".png" if content_type == "image/png" else ".jpg"
+    result = _blob_put(f"observation/{phone}/{int(time.time() * 1000)}{ext}", data, content_type)
+    return {"ok": True, "url": result.get("url")}
+
+
+@app.post("/api/observation/draft")
+async def observation_draft(req: Request, authorization: Optional[str] = Header(None)):
+    """Autosaves whatever a trainee has filled in for a session but not yet
+    submitted (date, ticked pointers, notes, picture links), so it's still
+    there if they leave and come back, or switch device. Overwritten on every
+    save and cleared when the session is actually submitted."""
+    role, phone = _check(authorization, {"trainee"})
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+    if "art-design" not in _trainee_categories(trainee):
+        raise HTTPException(403, "the observation checklist is only for the art & design category")
+    b = await req.json()
+    try:
+        section = int(b.get("section"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "section must be a number")
+    if section not in OBSERVATION_SECTION_ITEMS:
+        raise HTTPException(400, "session must be 1, 2 or 3")
+    observation = trainee.get("observation") or {}
+    if _observation_sessions(observation.get(str(section))):
+        raise HTTPException(400, "this session has already been submitted")
+    valid_items = [i for k in sorted(OBSERVATION_SECTION_ITEMS) if k <= section for i in OBSERVATION_SECTION_ITEMS[k]]
+    date = (b.get("date") or "").strip()
+    try:
+        time.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        date = ""
+    draft = {
+        "date": date,
+        "checked": [c for c in (b.get("checked") or []) if c in valid_items],
+        "learnt": (b.get("learnt") or "")[:2000],
+        "photos": [u for u in (b.get("photos") or []) if _is_own_observation_photo(u, phone)][:OBSERVATION_MAX_PHOTOS] if section >= 2 else [],
+        "saved_at": time.strftime("%Y-%m-%d %H:%M"),
+    }
+    drafts = trainee.get("observation_draft") or {}
+    drafts[str(section)] = draft
+    trainee["observation_draft"] = drafts
+    _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
+    return {"ok": True}
+
+
+@app.post("/api/observation/submit")
+async def observation_submit(req: Request, authorization: Optional[str] = Header(None)):
+    """Submits one observation session (with its date) — session 1, 2 or 3 —
+    of the Art & Design observation checklist. Each session is submitted
+    once. Pointers missed in a session carry forward: a later session may
+    also tick off any earlier session's pointers. Sessions 2 and 3 must
+    include a picture of the activity the trainee arranged (not one they observed)."""
+    role, phone = _check(authorization, {"trainee"})
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+    if "art-design" not in _trainee_categories(trainee):
+        raise HTTPException(403, "the observation checklist is only for the art & design category")
+    b = await req.json()
+    try:
+        section = int(b.get("section"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "section must be a number")
+    if section not in OBSERVATION_SECTION_ITEMS:
+        raise HTTPException(400, "session must be 1, 2 or 3")
+    date = (b.get("date") or "").strip()
+    try:
+        session_ts = time.mktime(time.strptime(date, "%Y-%m-%d"))
+    except ValueError:
+        raise HTTPException(400, "date must be a valid date (YYYY-MM-DD)")
+    if session_ts > time.time() + 2 * 86400:
+        raise HTTPException(400, "the session date can't be in the future")
+    observation = trainee.get("observation") or {}
+    if section > 1 and not _observation_sessions(observation.get(str(section - 1))):
+        raise HTTPException(400, f"submit session {section - 1} first")
+    sessions = _observation_sessions(observation.get(str(section)))
+    if sessions:
+        raise HTTPException(400, "this session has already been submitted")
+    # this session's own pointers plus anything missed in the sessions before it
+    valid_items = [i for k in sorted(OBSERVATION_SECTION_ITEMS) if k <= section for i in OBSERVATION_SECTION_ITEMS[k]]
+    entry = {
+        "date": date,
+        "checked": [c for c in (b.get("checked") or []) if c in valid_items],
+        "learnt": (b.get("learnt") or "").strip()[:2000],
+        "submitted_at": time.strftime("%Y-%m-%d %H:%M"),
+    }
+    # sessions 2 and 3 must include a picture of the activity the trainee arranged
+    if section >= 2:
+        photos = [u for u in (b.get("photos") or []) if _is_own_observation_photo(u, phone)][:OBSERVATION_MAX_PHOTOS]
+        if not photos:
+            raise HTTPException(400, "add a picture of the activity you arranged")
+        entry["photos"] = photos
+    sessions.append(entry)
+    observation[str(section)] = {"sessions": sessions}
+    trainee["observation"] = observation
+    drafts = trainee.get("observation_draft") or {}
+    if drafts.pop(str(section), None) is not None:
+        trainee["observation_draft"] = drafts
+    _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
+    return {"ok": True, "observation": _observation_view(observation)}
+
+
+@app.get("/api/observation/mine")
+async def observation_mine(authorization: Optional[str] = Header(None)):
+    role, phone = _check(authorization, {"trainee"})
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+    if "art-design" not in _trainee_categories(trainee):
+        raise HTTPException(403, "the observation checklist is only for the art & design category")
+    return {"observation": _observation_view(trainee.get("observation")),
+            "drafts": trainee.get("observation_draft") or {}}
+
+
+@app.get("/api/admin/observations")
+async def admin_observations(authorization: Optional[str] = Header(None)):
+    """Every trainee who has logged at least one observation session, for the
+    dashboard (limited to the login's categories for the scoped logins)."""
+    role, _ = _check(authorization, ADMIN_ROLES)
+    if not _role_has_category(role, "art-design"):
+        return []
+    trainees = [t for t in _list_trainees() if _trainee_in_scope(role, t)]
+    return [
+        {"phone": t.get("phone"), "name": t.get("name"), "categories": _trainee_categories(t),
+         "observation": _observation_view(t.get("observation"))}
+        for t in trainees if t.get("observation")
+    ]
 
 
 # ---------- explanation quiz ----------
