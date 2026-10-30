@@ -818,8 +818,9 @@ async def admin_artwork(authorization: Optional[str] = Header(None)):
             "phone": t.get("phone"), "name": t.get("name"), "categories": _trainee_categories(t),
             "artwork": t.get("artwork") or {}, "redo": t.get("artwork_redo") or {},
             "scores": t.get("artwork_scores") or {},
+            "comment": (t.get("artwork_comment") or {}).get("text", ""),
         }
-        for t in trainees if t.get("artwork") or t.get("artwork_redo")
+        for t in trainees if t.get("artwork") or t.get("artwork_redo") or t.get("artwork_comment")
     ]
 
 
@@ -964,8 +965,9 @@ async def admin_artwork35(authorization: Optional[str] = Header(None)):
             "phone": t.get("phone"), "name": t.get("name"), "categories": _trainee_categories(t),
             "artwork35": t.get("artwork35") or {}, "redo": t.get("artwork35_redo") or {},
             "scores": t.get("artwork35_scores") or {},
+            "comment": (t.get("artwork35_comment") or {}).get("text", ""),
         }
-        for t in trainees if t.get("artwork35") or t.get("artwork35_redo")
+        for t in trainees if t.get("artwork35") or t.get("artwork35_redo") or t.get("artwork35_comment")
     ]
 
 
@@ -1013,6 +1015,33 @@ def _parse_artwork_score(b: dict):
     if not (1 <= score <= ARTWORK_SCORE_MAX):
         raise HTTPException(400, f"score must be between 1 and {ARTWORK_SCORE_MAX}")
     return score, (b.get("note") or "").strip()[:500]
+
+
+@app.post("/api/admin/artwork/comment")
+async def admin_artwork_comment(req: Request, authorization: Optional[str] = Header(None)):
+    """Staff's free-text comment on a trainee's artwork overall, shown beside
+    their average score. Body: {phone, kind, comment} where kind is "flat"
+    (Art & Design) or "35" (Art 3-5). An empty comment clears it. Never
+    returned to trainees."""
+    role, _ = _check(authorization, ADMIN_ROLES)
+    b = await req.json()
+    kind = (b.get("kind") or "").strip()
+    if kind not in ("flat", "35"):
+        raise HTTPException(400, "kind must be flat or 35")
+    _require_category_in_scope(role, "art-design" if kind == "flat" else "art-3-5")
+    phone = (b.get("phone") or "").strip()
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+    _require_trainee_in_scope(role, trainee)
+    field = "artwork_comment" if kind == "flat" else "artwork35_comment"
+    text = (b.get("comment") or "").strip()[:1000]
+    if text:
+        trainee[field] = {"text": text, "by": role, "at": time.strftime("%Y-%m-%d %H:%M")}
+    else:
+        trainee.pop(field, None)
+    _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
+    return {"ok": True, "comment": text}
 
 
 @app.post("/api/admin/artwork/score")
@@ -1288,7 +1317,7 @@ async def observation_draft(req: Request, authorization: Optional[str] = Header(
         "date": date,
         "checked": [c for c in (b.get("checked") or []) if c in valid_items],
         "learnt": (b.get("learnt") or "")[:2000],
-        "photos": [u for u in (b.get("photos") or []) if _is_own_observation_photo(u, phone)][:OBSERVATION_MAX_PHOTOS] if section >= 2 else [],
+        "photos": [u for u in (b.get("photos") or []) if _is_own_observation_photo(u, phone)][:OBSERVATION_MAX_PHOTOS],
         "saved_at": time.strftime("%Y-%m-%d %H:%M"),
     }
     drafts = trainee.get("observation_draft") or {}
@@ -1304,7 +1333,8 @@ async def observation_submit(req: Request, authorization: Optional[str] = Header
     of the Art & Design observation checklist. Each session is submitted
     once. Pointers missed in a session carry forward: a later session may
     also tick off any earlier session's pointers. Sessions 2 and 3 must
-    include a picture of the activity the trainee arranged (not one they observed)."""
+    include a picture of the activity the trainee arranged (not one they
+    observed); session 1 can include pictures but doesn't have to."""
     role, phone = _check(authorization, {"trainee"})
     trainee = _get_trainee(phone)
     if not trainee:
@@ -1339,11 +1369,12 @@ async def observation_submit(req: Request, authorization: Optional[str] = Header
         "learnt": (b.get("learnt") or "").strip()[:2000],
         "submitted_at": time.strftime("%Y-%m-%d %H:%M"),
     }
-    # sessions 2 and 3 must include a picture of the activity the trainee arranged
-    if section >= 2:
-        photos = [u for u in (b.get("photos") or []) if _is_own_observation_photo(u, phone)][:OBSERVATION_MAX_PHOTOS]
-        if not photos:
-            raise HTTPException(400, "add a picture of the activity you arranged")
+    # pictures are optional in session 1; sessions 2 and 3 must include a picture
+    # of the activity the trainee arranged
+    photos = [u for u in (b.get("photos") or []) if _is_own_observation_photo(u, phone)][:OBSERVATION_MAX_PHOTOS]
+    if section >= 2 and not photos:
+        raise HTTPException(400, "add a picture of the activity you arranged")
+    if photos:
         entry["photos"] = photos
     sessions.append(entry)
     observation[str(section)] = {"sessions": sessions}
@@ -1377,9 +1408,37 @@ async def admin_observations(authorization: Optional[str] = Header(None)):
     trainees = [t for t in _list_trainees() if _trainee_in_scope(role, t)]
     return [
         {"phone": t.get("phone"), "name": t.get("name"), "categories": _trainee_categories(t),
-         "observation": _observation_view(t.get("observation"))}
+         "observation": _observation_view(t.get("observation")),
+         "photo_scores": t.get("observation_photo_scores") or {}}
         for t in trainees if t.get("observation")
     ]
+
+
+@app.post("/api/admin/observations/score")
+async def admin_observation_photo_score(req: Request, authorization: Optional[str] = Header(None)):
+    """Scores one picture a trainee attached to an observation session, out of
+    ARTWORK_SCORE_MAX with an optional note. Body: {phone, url, score, note}.
+    Scores are kept per picture (keyed by its URL), separately from the
+    session records, and are never returned to trainees."""
+    role, _ = _check(authorization, ADMIN_ROLES)
+    _require_category_in_scope(role, "art-design")
+    b = await req.json()
+    phone = (b.get("phone") or "").strip()
+    url = (b.get("url") or "").strip()
+    score, note = _parse_artwork_score(b)
+    trainee = _get_trainee(phone)
+    if not trainee:
+        raise HTTPException(404, "trainee not found")
+    _require_trainee_in_scope(role, trainee)
+    own = {u for rec in (trainee.get("observation") or {}).values()
+           for sess in _observation_sessions(rec) for u in (sess.get("photos") or [])}
+    if url not in own:
+        raise HTTPException(400, "that isn't one of this trainee's observation pictures")
+    scores = trainee.get("observation_photo_scores") or {}
+    scores[url] = {"score": score, "note": note, "scored_at": time.strftime("%Y-%m-%d %H:%M"), "scored_by": role}
+    trainee["observation_photo_scores"] = scores
+    _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
+    return {"ok": True, "scores": scores}
 
 
 # ---------- explanation quiz ----------

@@ -770,12 +770,14 @@ async function renderObservation(){
     const pics=(draft.photos||[]).map(url=>({url})); // uploaded the moment they're picked, so they're part of the saved draft
     let saveDraftNow=()=>{};
     let queueDraft=()=>{};
-    if(i>=1){
+    { // picture picker: optional in session 1, required in sessions 2 and 3
       const picLabel=document.createElement('div'); picLabel.style.cssText='font-weight:700;font-size:12.5px;margin:14px 0 4px';
-      picLabel.textContent='Picture of the activity you arranged *';
+      picLabel.textContent=i>=1 ? 'Picture of the activity you arranged *' : 'Pictures (optional)';
       card.appendChild(picLabel);
       const picHint=document.createElement('div'); picHint.className='muted'; picHint.style.cssText='font-size:12px;margin-bottom:6px';
-      picHint.textContent='Required — add a picture of the activity you arranged yourself, not one you observed (up to '+OBS_MAX_PHOTOS+' pictures).';
+      picHint.textContent=i>=1
+        ? 'Required — add a picture of the activity you arranged yourself, not one you observed (up to '+OBS_MAX_PHOTOS+' pictures).'
+        : 'Optional — add up to '+OBS_MAX_PHOTOS+' pictures from this session if you like.';
       card.appendChild(picHint);
       const thumbs=document.createElement('div'); thumbs.style.cssText='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px';
       card.appendChild(thumbs);
