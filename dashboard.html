@@ -224,6 +224,8 @@ function combinedHighlight(original, text, matchWords){
 }
 
 function loginView(msg){
+  if(typeof removeManualAlert==='function') removeManualAlert();
+  MANUAL_ALERT_AUTO_OPEN=true;
   document.getElementById('signout').style.display='none';
   document.getElementById('trainee-picker').style.display='none';
   root.innerHTML='';
@@ -296,6 +298,56 @@ function openManualScoreDialog(r){
     };
   });
 }
+// Opens the dialog for one record and saves the result; resolves true once saved.
+async function scoreManually(rec){
+  const v=await openManualScoreDialog(rec);
+  if(!v) return false;
+  const r=await fetch(API+'/api/admin/explanations/'+encodeURIComponent(rec.id)+'/score',{method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+localStorage.getItem(TK)}, body:JSON.stringify(v)});
+  if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not save score'); }
+  return true;
+}
+
+// Side panel that opens by itself after sign-in whenever responses are waiting for a manual score
+let MANUAL_ALERT_AUTO_OPEN=true, MANUAL_ALERT_OPEN=false;
+function removeManualAlert(){ ['manual-alert','manual-alert-tab'].forEach(id=>{ const e=document.getElementById(id); if(e) e.remove(); }); }
+function renderManualAlert(){
+  removeManualAlert();
+  const pending=ALL.filter(needsManualScore);
+  if(!pending.length) return;
+  if(MANUAL_ALERT_AUTO_OPEN){ MANUAL_ALERT_OPEN=true; MANUAL_ALERT_AUTO_OPEN=false; }
+  const n=pending.length;
+  if(!MANUAL_ALERT_OPEN){
+    const tab=document.createElement('button'); tab.id='manual-alert-tab'; tab.className='manual-alert-tab';
+    tab.textContent='\u26A0 '+n+' to score manually';
+    tab.onclick=()=>{ MANUAL_ALERT_OPEN=true; renderManualAlert(); };
+    document.body.appendChild(tab);
+    return;
+  }
+  const panel=document.createElement('aside'); panel.id='manual-alert'; panel.className='manual-alert';
+  panel.innerHTML='<div class="ma-head"><div><div class="ma-title">\u26A0 Needs your attention</div>'
+    +'<div class="ma-sub">'+n+' response'+(n===1?'':'s')+' could not be scored automatically. The trainee is waiting for you to score '+(n===1?'it':'them')+'.</div></div>'
+    +'<button class="ma-close" aria-label="hide" title="hide">\u00D7</button></div><div class="ma-list"></div>';
+  const list=panel.querySelector('.ma-list');
+  pending.sort((a,b)=>String(a.received_at||'').localeCompare(String(b.received_at||''))).forEach(rec=>{
+    const item=document.createElement('div'); item.className='ma-item';
+    item.innerHTML='<div class="ma-name">'+esc(rec.trainee_name||rec.trainee_phone||'trainee')+'</div>'
+      +'<div class="ma-meta">'+esc(rec.game_name||'')+(rec.age_band?' \u00B7 ages '+esc(rec.age_band):'')+'</div>'
+      +'<div class="ma-meta">'+esc(rec.received_at||'')+'</div>'
+      +'<button class="btn ma-btn">score now</button>';
+    const btn=item.querySelector('.ma-btn');
+    btn.onclick=async()=>{
+      btn.disabled=true;
+      try{ if(await scoreManually(rec)){ await load(); return; } }
+      catch(e){ alert(e.message||'could not save score'); }
+      btn.disabled=false;
+    };
+    list.appendChild(item);
+  });
+  panel.querySelector('.ma-close').onclick=()=>{ MANUAL_ALERT_OPEN=false; renderManualAlert(); };
+  document.body.appendChild(panel);
+}
+
 function scoreTotal(r){ const s=r.scores||{}; return ['age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine'].reduce((n,k)=>n+(s[k]?1:0),0); }
 
 function summaryStats(list){
@@ -542,15 +594,10 @@ function responsesTab(){
     btn.onclick=async()=>{
       const rec=ALL.find(x=>x.id===btn.getAttribute('data-manual-score'));
       if(!rec) return;
-      const v=await openManualScoreDialog(rec);
-      if(!v) return;
       btn.disabled=true;
-      try{
-        const r=await fetch(API+'/api/admin/explanations/'+encodeURIComponent(rec.id)+'/score',{method:'POST',
-          headers:{'Content-Type':'application/json','Authorization':'Bearer '+localStorage.getItem(TK)}, body:JSON.stringify(v)});
-        if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not save score'); }
-        await load();
-      }catch(e){ btn.disabled=false; alert(e.message||'could not save score'); }
+      try{ if(await scoreManually(rec)){ await load(); return; } }
+      catch(e){ alert(e.message||'could not save score'); }
+      btn.disabled=false;
     };
   });
   card.querySelectorAll('[data-comment-record]').forEach(box=>{
@@ -1509,6 +1556,7 @@ function render(){
   document.getElementById('signout').style.display='inline-block';
   syncTraineePicker();
   root.innerHTML='';
+  renderManualAlert();
 
   const tabBar=document.createElement('div'); tabBar.className='tabs';
   const hasArtwork=CATEGORIES.includes('art-design')||CATEGORIES.includes('art-3-5');
@@ -1560,7 +1608,7 @@ async function load(){
     render();
   }catch(e){ root.innerHTML='<div class="empty">Could not load — is the server running?</div>'; }
 }
-document.getElementById('signout').onclick=()=>{localStorage.removeItem(TK);loginView();};
+document.getElementById('signout').onclick=()=>{localStorage.removeItem(TK);removeManualAlert();MANUAL_ALERT_AUTO_OPEN=true;loginView();};
 load();
 </script>
 </body>
