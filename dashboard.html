@@ -317,7 +317,7 @@ function recordsView(list){
     if(r.reasoning) html+='<div class="txt"><span class="lab">admin-only scoring notes</span>'+esc(r.reasoning)+'</div>';
     if(r.grammar_notes&&r.grammar_notes.length){
       let gn='<div class="txt"><span class="lab">🔤 grammar notes (admin-only — never shown to the trainee)</span>';
-      r.grammar_notes.forEach(note=>{ gn+='<div style="margin-bottom:4px">'+esc(note)+'</div>'; });
+      r.grammar_notes.forEach(note=>{ const tx=grammarNoteText(note); if(tx) gn+='<div style="margin-bottom:4px">'+esc(tx)+'</div>'; });
       html+=gn+'</div>';
     }
     if(r.strengths) html+='<div class="txt" style="background:var(--sage-tint)"><span class="lab">✅ what they did well</span>'+esc(r.strengths)+'</div>';
@@ -371,6 +371,18 @@ function csvEscape(v){
   const s=(v==null?'':String(v));
   return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
 }
+// grammar_notes should be plain strings, but older records (and the odd model reply) hold small objects
+function grammarNoteText(note){
+  if(typeof note==='string') return note;
+  if(note && typeof note==='object'){
+    const pick=keys=>{ for(const k of keys){ if(typeof note[k]==='string' && note[k].trim()) return note[k].trim(); } return ''; };
+    const said=pick(['said','quote','original','example','incorrect','mistake','error','text']);
+    const fix=pick(['correction','corrected','should_be','fix','suggestion','improved','correct']);
+    if(said && fix) return 'said \u2018'+said+'\u2019 \u2014 should be \u2018'+fix+'\u2019';
+    return Object.values(note).filter(v=>(typeof v==='string'||typeof v==='number') && String(v).trim()).join(' \u2014 ');
+  }
+  return note==null ? '' : String(note);
+}
 function downloadRecordsCSV(list){
   const cols=['trainee_name','trainee_phone','game_name','category','cohort','age_band','received_at',
     'age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine','total_score',
@@ -385,7 +397,7 @@ function downloadRecordsCSV(list){
       age_appropriateness:s.age_appropriateness?1:0, clarity:s.clarity?1:0, gameplay_accuracy:s.gameplay_accuracy?1:0,
       challenge_accuracy:s.challenge_accuracy?1:0, genuine:s.genuine?1:0, total_score:scoreTotal(r),
       strengths:r.strengths||'', improvements:improvementsStr, new_idea:r.new_idea||'', reasoning:r.reasoning||'',
-      grammar_notes:(r.grammar_notes||[]).join(' ;; ')
+      grammar_notes:(r.grammar_notes||[]).map(grammarNoteText).filter(Boolean).join(' ;; ')
     };
     return cols.map(c=>csvEscape(vals[c])).join(',');
   });
@@ -1002,6 +1014,38 @@ function ynBadge(pct){
 }
 
 const ARTWORK_SCORE_MAX=10;
+// keep in step with ARTWORK_IMPROVEMENT_AREAS in api/index.py
+const IMPROVEMENT_AREAS=['Colour and Painting','Balance and Composition','Line and Texture','Imagination and Collaboration','Shape and Form'];
+// score + optional note in one dialog; resolves null if cancelled
+function openScoreDialog(label, current){
+  return new Promise(resolve=>{
+    const overlay=document.createElement('div'); overlay.className='modal-overlay';
+    overlay.innerHTML='<div class="modal-card">'
+      +'<div style="font-weight:800;font-size:17px;margin-bottom:2px">Score</div>'
+      +'<div class="muted" id="sd-label" style="font-size:13px;margin-bottom:14px"></div>'
+      +'<div style="font-weight:700;font-size:12.5px;margin-bottom:4px">Score (1–'+ARTWORK_SCORE_MAX+')</div>'
+      +'<input id="sd-score" type="number" min="1" max="'+ARTWORK_SCORE_MAX+'" step="1" style="max-width:110px">'
+      +'<div style="font-weight:700;font-size:12.5px;margin-bottom:4px">Note (optional)</div>'
+      +'<textarea id="sd-note" rows="3"></textarea>'
+      +'<div class="err" id="sd-err" style="margin-bottom:8px"></div>'
+      +'<button class="modal-btn modal-btn-teal" id="sd-save">save</button>'
+      +'<button class="modal-btn modal-btn-neutral" id="sd-cancel">cancel</button>'
+      +'</div>';
+    document.body.appendChild(overlay);
+    const $=id=>overlay.querySelector('#'+id);
+    $('sd-label').textContent=label;
+    $('sd-score').value=current.score||''; $('sd-note').value=current.note||'';
+    const done=v=>{ overlay.remove(); resolve(v); };
+    overlay.addEventListener('click', e=>{ if(e.target===overlay) done(null); });
+    $('sd-cancel').onclick=()=>done(null);
+    $('sd-save').onclick=()=>{
+      const score=parseInt($('sd-score').value,10);
+      if(!(score>=1 && score<=ARTWORK_SCORE_MAX)){ $('sd-err').textContent='Enter a whole number from 1 to '+ARTWORK_SCORE_MAX+'.'; $('sd-err').style.display='block'; $('sd-score').focus(); return; }
+      done({score, note:$('sd-note').value.trim()});
+    };
+    $('sd-score').focus();
+  });
+}
 // "score" / "7/10" button for one submitted artwork. A score belongs to the
 // upload that was current when it was given, so a later resubmission shows ↻.
 function scoreCellHTML(scoreObj, versionCount, attrs, label){
@@ -1026,28 +1070,46 @@ function avgText(list){
 }
 function avgHeaderCell(DIVIDER){
   return '<th rowspan="2" style="text-align:center;'+DIVIDER+'" title="average of this trainee\'s scores (out of '+ARTWORK_SCORE_MAX+')">avg</th>'
-    +'<th rowspan="2" style="text-align:left;min-width:190px">comments</th>';
+    +'<th rowspan="2" style="text-align:left;min-width:250px">area of improvement &amp; comments</th>';
 }
-// free-text staff comment for a trainee's artwork, saved when the box loses focus
-function commentCellHTML(kind, phone, name, text){
-  return '<td style="min-width:190px"><textarea rows="2" placeholder="add a comment…" data-comment-kind="'+kind+'" data-comment-phone="'+esc(phone)+'" '
-    +'data-comment-orig="'+esc(text||'')+'" aria-label="comment on '+esc(name||phone)+'\'s artwork" '
-    +'style="width:100%;min-width:170px;margin:0;padding:4px 6px;font-size:11.5px;border-radius:8px;resize:vertical;box-sizing:border-box">'+esc(text||'')+'</textarea></td>';
+// per-trainee cell: major area of improvement (dropdown) + notes. Saved as soon as either changes,
+// but an area can't be saved without a note explaining it.
+function commentCellHTML(kind, phone, name, text, area){
+  const who=esc(name||phone);
+  return '<td style="min-width:250px" data-comment-cell>'
+    +'<select data-comment-area data-comment-kind="'+kind+'" data-comment-phone="'+esc(phone)+'" data-orig="'+esc(area||'')+'" aria-label="major area of improvement for '+who+'" '
+    +'style="width:100%;min-width:230px;margin:0 0 4px;padding:4px 6px;font-size:11.5px;border-radius:8px;box-sizing:border-box">'
+    +'<option value="">Major area of improvement…</option>'
+    +IMPROVEMENT_AREAS.map(a=>'<option value="'+esc(a)+'"'+(a===area?' selected':'')+'>'+esc(a)+'</option>').join('')
+    +'</select>'
+    +'<textarea rows="2" placeholder="'+(area?'note required — explain this area…':'add a note…')+'" data-comment-text data-orig="'+esc(text||'')+'" aria-label="notes on '+who+'\'s artwork" '
+    +'style="width:100%;min-width:230px;margin:0;padding:4px 6px;font-size:11.5px;border-radius:8px;resize:vertical;box-sizing:border-box">'+esc(text||'')+'</textarea>'
+    +'<div data-comment-msg style="font-size:10.5px;color:#B3261E;min-height:13px;margin-top:2px"></div></td>';
 }
 function bindCommentFields(container, t){
-  container.querySelectorAll('textarea[data-comment-kind]').forEach(el=>{
-    el.addEventListener('blur', async()=>{
-      if(el.value===el.dataset.commentOrig) return;
-      const flash=c=>{ el.style.borderColor=c; setTimeout(()=>{ el.style.borderColor=''; },1400); };
+  container.querySelectorAll('td[data-comment-cell]').forEach(td=>{
+    const sel=td.querySelector('[data-comment-area]'), ta=td.querySelector('[data-comment-text]'), msg=td.querySelector('[data-comment-msg]');
+    const flash=c=>{ [sel,ta].forEach(e=>{ e.style.borderColor=c; }); setTimeout(()=>[sel,ta].forEach(e=>{ e.style.borderColor=''; }),1400); };
+    const save=async()=>{
+      ta.placeholder=sel.value?'note required — explain this area…':'add a note…';
+      if(sel.value===sel.dataset.orig && ta.value===ta.dataset.orig){ msg.textContent=''; return; }
+      if(sel.value && !ta.value.trim()){
+        msg.textContent='Add a note to save this area of improvement.';
+        ta.style.borderColor='#B3261E';
+        return;
+      }
+      msg.textContent=''; ta.style.borderColor='';
       try{
         const r=await fetch(API+'/api/admin/artwork/comment',{method:'POST',
           headers:{'Content-Type':'application/json','Authorization':'Bearer '+t},
-          body:JSON.stringify({phone:el.dataset.commentPhone, kind:el.dataset.commentKind, comment:el.value})});
+          body:JSON.stringify({phone:sel.dataset.commentPhone, kind:sel.dataset.commentKind, area:sel.value, comment:ta.value})});
         const d=await r.json();
-        if(!r.ok) throw new Error(d.detail||'could not save comment');
-        el.dataset.commentOrig=el.value; flash('var(--sage, #5F9147)');
-      }catch(e){ flash('#B3261E'); alert(e.message||'could not save comment'); }
-    });
+        if(!r.ok) throw new Error(d.detail||'could not save');
+        sel.dataset.orig=sel.value; ta.dataset.orig=ta.value; flash('var(--sage, #5F9147)');
+      }catch(e){ flash('#B3261E'); msg.textContent=e.message||'could not save'; }
+    };
+    ta.addEventListener('blur', save);
+    sel.addEventListener('change', ()=>{ save(); if(sel.value && !ta.value.trim()) ta.focus(); });
   });
 }
 function avgRowCell(list, DIVIDER){
@@ -1063,12 +1125,9 @@ function bindScoreButtons(container, t){
   container.querySelectorAll('[data-score-kind]').forEach(el=>{
     el.onclick=async()=>{
       const d=el.dataset;
-      const raw=prompt('Score for '+d.scoreLabel+' (1–'+ARTWORK_SCORE_MAX+'):', d.scoreCurrent||'');
-      if(raw===null) return;
-      const score=parseInt(raw,10);
-      if(!(score>=1 && score<=ARTWORK_SCORE_MAX)){ alert('Enter a whole number from 1 to '+ARTWORK_SCORE_MAX+'.'); return; }
-      const note=prompt('Note (optional):', d.scoreNote||'');
-      if(note===null) return;
+      const v=await openScoreDialog(d.scoreLabel, {score:d.scoreCurrent, note:d.scoreNote});
+      if(!v) return;
+      const {score, note}=v;
       const kind=d.scoreKind;
       const body=kind==='flat'
         ? {phone:d.scorePhone, age_band:d.scoreBand, unit:Number(d.scoreUnit), score, note}
@@ -1184,7 +1243,7 @@ async function artworkTab(){
         html+='<td style="text-align:center;'+divider+'">'+cell+'</td>';
       }
     });
-    html+=avgRowCell(rowScores, DIVIDER)+commentCellHTML('flat', tr.phone, tr.name, entry && entry.comment)+'</tr>';
+    html+=avgRowCell(rowScores, DIVIDER)+commentCellHTML('flat', tr.phone, tr.name, entry && entry.comment, entry && entry.area)+'</tr>';
   });
   html+=avgSummaryRow(colScores, allScores, new Set([ARTWORK_UNITS]), DIVIDER);
   html+='</tbody></table></div>';
@@ -1275,7 +1334,7 @@ function renderArtwork35Table(rows, byPhone, t){
         colIdx++;
       });
     });
-    html+=avgRowCell(rowScores, DIVIDER)+commentCellHTML('35', tr.phone, tr.name, entry && entry.comment)+'</tr>';
+    html+=avgRowCell(rowScores, DIVIDER)+commentCellHTML('35', tr.phone, tr.name, entry && entry.comment, entry && entry.area)+'</tr>';
   });
   html+=avgSummaryRow(colScores, allScores, dividerCols, DIVIDER);
   html+='</tbody></table></div>';

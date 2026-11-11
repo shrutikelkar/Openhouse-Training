@@ -86,6 +86,14 @@ BLOB_API_VERSION = "10"
 ARTWORK_AGE_BANDS = ["5-8", "8-12"]
 ARTWORK_UNITS = 10
 ARTWORK_SCORE_MAX = 10  # staff score each artwork out of this
+# the one area a trainee most needs to improve, chosen alongside staff's comment on their artwork
+ARTWORK_IMPROVEMENT_AREAS = [
+    "Colour and Painting",
+    "Balance and Composition",
+    "Line and Texture",
+    "Imagination and Collaboration",
+    "Shape and Form",
+]
 ARTWORK_MAX_BYTES = 8 * 1024 * 1024  # 8MB per file
 
 # Art 3-5's artwork portfolio is shaped differently from the age-band/unit grid
@@ -431,6 +439,28 @@ def _genuineness_signal(game: dict, history: list) -> str:
         "as genuine; suspiciously polished, complete, written-style sentences that closely mirror the "
         "reference structure read as scripted.\n"
     )
+
+
+_GRAMMAR_SAID_KEYS = ("said", "quote", "original", "example", "incorrect", "mistake", "error", "text")
+_GRAMMAR_FIX_KEYS = ("correction", "corrected", "should_be", "fix", "suggestion", "improved", "correct")
+
+
+def _grammar_note_text(note) -> str:
+    """grammar_notes are meant to be plain strings, but the model sometimes
+    returns small objects instead — flatten either shape to one readable line."""
+    if isinstance(note, str):
+        return note.strip()
+    if isinstance(note, dict):
+        said = next((str(note[k]).strip() for k in _GRAMMAR_SAID_KEYS if isinstance(note.get(k), str) and note[k].strip()), "")
+        fix = next((str(note[k]).strip() for k in _GRAMMAR_FIX_KEYS if isinstance(note.get(k), str) and note[k].strip()), "")
+        if said and fix:
+            return f"said '{said}' — should be '{fix}'"
+        return " — ".join(str(v).strip() for v in note.values() if isinstance(v, (str, int, float)) and str(v).strip())
+    return str(note).strip() if note else ""
+
+
+def _grammar_notes_list(notes) -> list:
+    return [t for t in (_grammar_note_text(n) for n in (notes if isinstance(notes, list) else [])) if t]
 
 
 def _gemini_json(system: str, user_message: str) -> dict:
@@ -819,6 +849,7 @@ async def admin_artwork(authorization: Optional[str] = Header(None)):
             "artwork": t.get("artwork") or {}, "redo": t.get("artwork_redo") or {},
             "scores": t.get("artwork_scores") or {},
             "comment": (t.get("artwork_comment") or {}).get("text", ""),
+            "area": (t.get("artwork_comment") or {}).get("area", ""),
         }
         for t in trainees if t.get("artwork") or t.get("artwork_redo") or t.get("artwork_comment")
     ]
@@ -966,6 +997,7 @@ async def admin_artwork35(authorization: Optional[str] = Header(None)):
             "artwork35": t.get("artwork35") or {}, "redo": t.get("artwork35_redo") or {},
             "scores": t.get("artwork35_scores") or {},
             "comment": (t.get("artwork35_comment") or {}).get("text", ""),
+            "area": (t.get("artwork35_comment") or {}).get("area", ""),
         }
         for t in trainees if t.get("artwork35") or t.get("artwork35_redo") or t.get("artwork35_comment")
     ]
@@ -1020,9 +1052,11 @@ def _parse_artwork_score(b: dict):
 @app.post("/api/admin/artwork/comment")
 async def admin_artwork_comment(req: Request, authorization: Optional[str] = Header(None)):
     """Staff's free-text comment on a trainee's artwork overall, shown beside
-    their average score. Body: {phone, kind, comment} where kind is "flat"
-    (Art & Design) or "35" (Art 3-5). An empty comment clears it. Never
-    returned to trainees."""
+    their average score, plus the major area of improvement. Body: {phone,
+    kind, comment, area} where kind is "flat" (Art & Design) or "35" (Art
+    3-5) and area is one of ARTWORK_IMPROVEMENT_AREAS (or empty). A note is
+    required whenever an area is chosen. Clearing both removes the entry.
+    Never returned to trainees."""
     role, _ = _check(authorization, ADMIN_ROLES)
     b = await req.json()
     kind = (b.get("kind") or "").strip()
@@ -1036,12 +1070,17 @@ async def admin_artwork_comment(req: Request, authorization: Optional[str] = Hea
     _require_trainee_in_scope(role, trainee)
     field = "artwork_comment" if kind == "flat" else "artwork35_comment"
     text = (b.get("comment") or "").strip()[:1000]
-    if text:
-        trainee[field] = {"text": text, "by": role, "at": time.strftime("%Y-%m-%d %H:%M")}
+    area = (b.get("area") or "").strip()
+    if area and area not in ARTWORK_IMPROVEMENT_AREAS:
+        raise HTTPException(400, f"area must be one of {ARTWORK_IMPROVEMENT_AREAS}")
+    if area and not text:
+        raise HTTPException(400, "add a note explaining the area of improvement")
+    if text or area:
+        trainee[field] = {"text": text, "area": area, "by": role, "at": time.strftime("%Y-%m-%d %H:%M")}
     else:
         trainee.pop(field, None)
     _redis("HSET", TRAINEES_KEY, phone, json.dumps(trainee, ensure_ascii=False))
-    return {"ok": True, "comment": text}
+    return {"ok": True, "comment": text, "area": area}
 
 
 @app.post("/api/admin/artwork/score")
@@ -1458,6 +1497,23 @@ async def explain_transcribe(req: Request, authorization: Optional[str] = Header
     return {"transcript": transcript}
 
 
+_APP_ERROR_REPLIES = ("Sorry, something went wrong scoring", "(connection error")
+
+
+def _clean_history(history: list) -> list:
+    """Drops any answer the scoring call failed on, together with the error
+    message the app showed for it, so a retry doesn't use up an extra turn or
+    leave the error text sitting in the transcript as if it were a question."""
+    out = []
+    for h in history:
+        if h.get("role") == "ai" and str(h.get("text", "")).startswith(_APP_ERROR_REPLIES):
+            if out and out[-1].get("role") == "trainee":
+                out.pop()
+            continue
+        out.append(h)
+    return out
+
+
 @app.post("/api/explain/turn")
 async def explain_turn(req: Request, authorization: Optional[str] = Header(None)):
     """One turn of the game-explanation quiz. The client sends the full game
@@ -1469,7 +1525,7 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
     game = b.get("game") or {}
     game_name = game.get("name") or "the game"
     age_band = b.get("age_band") or "unknown"
-    history = b.get("history") or []
+    history = _clean_history(b.get("history") or [])
     trainee_turns = sum(1 for h in history if h.get("role") == "trainee")
     prior_questions = [h.get("text", "") for h in history if h.get("role") == "ai"]
     skill_names = [SKILL_LABELS.get(code, code) for code in game.get("skills") or []]
@@ -1498,7 +1554,11 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
     if debrief_questions:
         required_topics += 1
     min_turns = EXPLAIN_MIN_TURNS
-    max_turns = EXPLAIN_MAX_TURNS
+    # The opening explanation plus one question per remaining mandatory topic
+    # needs `required_topics` answers; a flat cap left games with many topics
+    # (e.g. Body Talk) no room for a single retry or vague answer. Give every
+    # game a couple of spare turns on top of what its topics need.
+    max_turns = max(EXPLAIN_MAX_TURNS, required_topics + 2)
 
     if age_band in ("3–5", "3-5"):
         age_example_rule = (
@@ -1734,7 +1794,8 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
             "hypothetical speech. Each entry should quote what they actually said and the correction, "
             "e.g. \"said 'he don't understand' — should be 'he doesn't understand'\". This is for staff "
             "coaching only: it is NEVER shown to the trainee and must NEVER affect any of the five scores "
-            "above, even if the grammar is poor. Empty array if you noticed nothing worth flagging. Only "
+            "above, even if the grammar is poor. Each entry must be ONE plain-text string, not an object. "
+            "Empty array if you noticed nothing worth flagging. Only "
             "include \"grammar_notes\" in the final action, not in ask.\n\n"
             if is_public_speaking else ""
         )
@@ -1788,6 +1849,22 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
             "question": f"What's the very first thing you'd tell the children to do to set up {game_name}?",
         }
     if trainee_turns >= max_turns and result.get("action") != "final":
+        # Out of turns without the model finalizing. Rather than zero everything,
+        # make one more call that must score on what the trainee actually said.
+        try:
+            forced = _gemini_json(
+                system + (
+                    "\n\nThis is the FINAL turn. Do NOT ask another question. Finalize now with scores, "
+                    "strengths and improvements, based only on what the trainee actually said. A mandatory "
+                    "topic you never got to ask about may be scored 0 — name it in \"improvements\"."
+                ),
+                transcript,
+            )
+        except HTTPException:
+            forced = {}
+        if forced.get("action") == "final":
+            result = forced
+    if trainee_turns >= max_turns and result.get("action") != "final":
         result = {
             "action": "final",
             "scores": {"age_appropriateness": 0, "clarity": 0, "gameplay_accuracy": 0, "challenge_accuracy": 0, "genuine": 0},
@@ -1802,7 +1879,7 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
         result.setdefault("strengths", "")
         result.setdefault("improvements", [])
         result.setdefault("suggestion", "")
-        result.setdefault("grammar_notes", [])
+        result["grammar_notes"] = _grammar_notes_list(result.get("grammar_notes"))
         # "timeout" means the conversation ran out of turns (a system limit, not a
         # genuineness judgement); anything else with genuine=0 is a real model call.
         result.setdefault("redo_reason", "not_genuine" if not result["scores"].get("genuine") else None)
@@ -1852,7 +1929,7 @@ async def explain_save(req: Request, authorization: Optional[str] = Header(None)
         "new_idea": b.get("new_idea") or None,
         "strengths": b.get("strengths") or "",
         "improvements": b.get("improvements") or [],
-        "grammar_notes": b.get("grammar_notes") or [],
+        "grammar_notes": _grammar_notes_list(b.get("grammar_notes")),
     }
     _redis("LPUSH", EXPLAIN_LIST_KEY, json.dumps(rec, ensure_ascii=False))
     # A new response (first attempt or re-attempt) means the downloadable

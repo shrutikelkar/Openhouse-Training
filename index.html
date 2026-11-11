@@ -53,7 +53,7 @@ document.getElementById('headerMascot').innerHTML=mascotSVG(48);
 let TRAINEE={ name:'', phone:'', category:'', categories:[], cohort:'', approved:false };
 let MY_RECORDS=[];
 let STATE={ game:null, ageBand:null, history:[], finalResult:null };
-let mediaRecorder=null, mediaStream=null, listening=false, liveText='', reviewMode=false, originalTranscript='', recordingTimer=null;
+let mediaRecorder=null, mediaStream=null, listening=false, liveText='', reviewMode=false, originalTranscript='', recordingTimer=null, submitError='';
 
 function authHeader(){ return {'Authorization':'Bearer '+localStorage.getItem(TK)}; }
 
@@ -1159,6 +1159,10 @@ function renderConversation(waitingForModel){
     ta.addEventListener('paste', e=>e.preventDefault());
     ta.addEventListener('drop', e=>e.preventDefault());
     card.appendChild(ta);
+    if(submitError){
+      const se=document.createElement('div'); se.className='err'; se.style.display='block'; se.textContent=submitError;
+      card.appendChild(se);
+    }
     const row=document.createElement('div'); row.style.cssText='display:flex;gap:8px';
     const rerecord=document.createElement('button'); rerecord.className='ghost'; rerecord.textContent='🎙 re-record instead';
     rerecord.onclick=()=>{ reviewMode=false; liveText=''; originalTranscript=''; renderConversation(); };
@@ -1265,6 +1269,7 @@ async function submitAnswer(rawText, original){
   reviewMode=false;
   const turn={role:'trainee', text};
   if(original && original.trim() && original.trim()!==text) turn.original=original.trim();
+  submitError='';
   STATE.history.push(turn);
   renderConversation(true);
   try{
@@ -1274,8 +1279,7 @@ async function submitAnswer(rawText, original){
     const d=await r.json();
     if(!r.ok){
       console.error('explain/turn failed:', d.detail||('HTTP '+r.status));
-      STATE.history.push({role:'ai', text:'Sorry, something went wrong scoring that — tap the mic and try again.'});
-      renderConversation();
+      retryAnswer(turn);
       return;
     }
     if(d.action==='final'){
@@ -1288,9 +1292,18 @@ async function submitAnswer(rawText, original){
     }
   }catch(e){
     console.error('explain/turn network error:', e);
-    STATE.history.push({role:'ai', text:'(connection error — could not reach the scoring service)'});
-    renderConversation();
+    retryAnswer(turn);
   }
+}
+
+// The scoring call failed: take that answer back out of the conversation (it must not use up a turn)
+// and put it back in the review box so one tap sends it again.
+function retryAnswer(turn){
+  const i=STATE.history.lastIndexOf(turn);
+  if(i>=0) STATE.history.splice(i,1);
+  liveText=turn.text; originalTranscript=turn.original||turn.text; reviewMode=true;
+  submitError='Something went wrong scoring that — your answer is kept below. Tap "submit answer" to try again.';
+  renderConversation();
 }
 
 function renderFinal(){
