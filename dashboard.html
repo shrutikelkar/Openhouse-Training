@@ -248,6 +248,54 @@ function loginView(msg){
   root.appendChild(back);
 }
 
+// A response needs scoring by hand when automatic scoring failed (older fallback records are recognised by their note)
+function needsManualScore(r){
+  return !r.manual_score && (!!r.scoring_failed || /^Reached the maximum number of follow-up questions/.test(r.reasoning||''));
+}
+const MANUAL_CRITERIA=[['age_appropriateness','age fit'],['clarity','clarity'],['gameplay_accuracy','gameplay accuracy'],['challenge_accuracy','challenge accuracy'],['genuine','genuine (own words)']];
+// pass/fail for each of the five criteria, a "what to improve" line for each fail, and what they did well
+function openManualScoreDialog(r){
+  return new Promise(resolve=>{
+    const overlay=document.createElement('div'); overlay.className='modal-overlay';
+    const card=document.createElement('div'); card.className='modal-card'; card.style.maxWidth='460px'; card.style.maxHeight='90vh'; card.style.overflowY='auto';
+    card.innerHTML='<div style="font-weight:800;font-size:17px;margin-bottom:2px">Score manually</div>'
+      +'<div class="muted" id="ms-who" style="font-size:13px;margin-bottom:12px"></div>'
+      +'<div class="muted" style="font-size:12px;margin-bottom:10px">Tick each criterion the trainee met. For any they missed, say what to improve — the trainee will see it.</div>'
+      +'<div id="ms-rows"></div>'
+      +'<div style="font-weight:700;font-size:12.5px;margin:10px 0 4px">What they did well (optional)</div>'
+      +'<textarea id="ms-strengths" rows="2"></textarea>'
+      +'<div class="err" id="ms-err" style="margin-bottom:8px"></div>'
+      +'<button class="modal-btn modal-btn-teal" id="ms-save">save score</button>'
+      +'<button class="modal-btn modal-btn-neutral" id="ms-cancel">cancel</button>';
+    overlay.appendChild(card); document.body.appendChild(overlay);
+    const $=id=>card.querySelector('#'+id);
+    $('ms-who').textContent=(r.trainee_name||'trainee')+' — '+(r.game_name||'')+' ('+(r.received_at||'')+')';
+    const prior=r.manual_score ? (r.scores||{}) : {};
+    const priorImp={}; (r.manual_score?(r.improvements||[]):[]).forEach(x=>{ priorImp[x.criterion]=x.reason||''; });
+    const rows=$('ms-rows'); const refs={};
+    MANUAL_CRITERIA.forEach(([k,label])=>{
+      const row=document.createElement('div'); row.style.cssText='margin-bottom:8px';
+      const lab=document.createElement('label'); lab.style.cssText='display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;cursor:pointer';
+      const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=!!prior[k]; cb.style.cssText='width:18px;height:18px;padding:0;margin:0;flex:none';
+      const sp=document.createElement('span'); sp.textContent=label; lab.append(cb,sp);
+      const why=document.createElement('input'); why.type='text'; why.placeholder='what to improve…'; why.value=priorImp[k]||''; why.style.cssText='margin:4px 0 0;font-size:12.5px;padding:6px 8px';
+      const sync=()=>{ why.style.display=cb.checked?'none':'block'; }; cb.onchange=sync; sync();
+      row.append(lab,why); rows.appendChild(row); refs[k]={cb,why};
+    });
+    $('ms-strengths').value=r.manual_score?(r.strengths||''):'';
+    const done=v=>{ overlay.remove(); resolve(v); };
+    overlay.addEventListener('click', e=>{ if(e.target===overlay) done(null); });
+    $('ms-cancel').onclick=()=>done(null);
+    $('ms-save').onclick=()=>{
+      const scores={}, improvements=[];
+      for(const [k] of MANUAL_CRITERIA){
+        scores[k]=refs[k].cb.checked?1:0;
+        if(!scores[k] && refs[k].why.value.trim()) improvements.push({criterion:k, reason:refs[k].why.value.trim()});
+      }
+      done({scores, improvements, strengths:$('ms-strengths').value.trim()});
+    };
+  });
+}
 function scoreTotal(r){ const s=r.scores||{}; return ['age_appropriateness','clarity','gameplay_accuracy','challenge_accuracy','genuine'].reduce((n,k)=>n+(s[k]?1:0),0); }
 
 function summaryStats(list){
@@ -303,6 +351,8 @@ function recordsView(list){
     html+='<span class="pill coral">'+esc(r.game_name||'')+'</span>';
     html+='<span class="pill teal">ages '+esc(r.age_band||'?')+'</span>';
     if(isReattempt) html+='<span class="pill" style="background:#FDE9C8;color:#8a5a00;border-color:transparent">↻ re-attempt</span>';
+    if(needsManualScore(r)) html+='<span class="pill" style="background:#FADBD8;color:#B3261E;border-color:transparent">⚠ needs manual scoring</span>';
+    if(r.manual_score) html+='<span class="pill" style="background:var(--sage-tint);color:var(--sage);border-color:transparent" title="scored by '+esc(r.manual_score.by||'staff')+' on '+esc(r.manual_score.at||'')+'">✍ scored manually</span>';
     if(r.category) html+='<span class="pill">'+esc(catLabel(r.category))+'</span>';
     if(r.cohort) html+='<span class="pill">'+fmtDate(r.cohort)+'</span>';
     html+='<span class="muted" style="font-size:12px;margin-left:auto">'+esc(r.received_at||'')+'</span>';
@@ -314,6 +364,13 @@ function recordsView(list){
     });
     html+='<span class="pill" style="margin-left:4px">'+total+'/5</span>';
     html+='</div>';
+    if(needsManualScore(r)){
+      html+='<div class="txt" style="background:#FADBD8"><span class="lab" style="color:#B3261E">⚠ automatic scoring failed</span>'
+        +'The 0/5 above is not a real score. Read the transcript and score this one yourself.'
+        +'<div style="margin-top:6px"><button class="btn" data-manual-score="'+esc(r.id||'')+'" style="font-size:12.5px;padding:6px 14px">score manually</button></div></div>';
+    } else if(r.manual_score){
+      html+='<div style="margin:-2px 0 8px"><button class="ghost" data-manual-score="'+esc(r.id||'')+'" style="font-size:11.5px;padding:3px 10px">✏️ edit manual score</button></div>';
+    }
     if(r.reasoning) html+='<div class="txt"><span class="lab">admin-only scoring notes</span>'+esc(r.reasoning)+'</div>';
     if(r.grammar_notes&&r.grammar_notes.length){
       let gn='<div class="txt"><span class="lab">🔤 grammar notes (admin-only — never shown to the trainee)</span>';
@@ -481,6 +538,21 @@ function responsesTab(){
   const dl=document.getElementById('download-csv');
   if(dl) dl.onclick=()=>downloadRecordsCSV(filtered);
 
+  card.querySelectorAll('[data-manual-score]').forEach(btn=>{
+    btn.onclick=async()=>{
+      const rec=ALL.find(x=>x.id===btn.getAttribute('data-manual-score'));
+      if(!rec) return;
+      const v=await openManualScoreDialog(rec);
+      if(!v) return;
+      btn.disabled=true;
+      try{
+        const r=await fetch(API+'/api/admin/explanations/'+encodeURIComponent(rec.id)+'/score',{method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+localStorage.getItem(TK)}, body:JSON.stringify(v)});
+        if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||'could not save score'); }
+        await load();
+      }catch(e){ btn.disabled=false; alert(e.message||'could not save score'); }
+    };
+  });
   card.querySelectorAll('[data-comment-record]').forEach(box=>{
     const recordId=box.getAttribute('data-comment-record');
     const display=box.querySelector('.comment-display');

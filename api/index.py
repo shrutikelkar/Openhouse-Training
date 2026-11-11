@@ -1872,6 +1872,7 @@ async def explain_turn(req: Request, authorization: Optional[str] = Header(None)
             "strengths": "You stayed with it through several follow-up questions.",
             "improvements": [{"criterion": k, "reason": "This wasn't confirmed within the allowed number of follow-ups.", "fix": "Try covering this clearly in your first answer next time."} for k in ("age_appropriateness", "clarity", "gameplay_accuracy", "challenge_accuracy", "genuine")],
             "redo_reason": "timeout",
+            "scoring_failed": True,
         }
     if result.get("action") == "final":
         result.setdefault("scores", {}).setdefault("genuine", 0)
@@ -1930,6 +1931,7 @@ async def explain_save(req: Request, authorization: Optional[str] = Header(None)
         "strengths": b.get("strengths") or "",
         "improvements": b.get("improvements") or [],
         "grammar_notes": _grammar_notes_list(b.get("grammar_notes")),
+        "scoring_failed": bool(b.get("scoring_failed")),
     }
     _redis("LPUSH", EXPLAIN_LIST_KEY, json.dumps(rec, ensure_ascii=False))
     # A new response (first attempt or re-attempt) means the downloadable
@@ -1999,6 +2001,41 @@ async def edit_explanation_comment(record_id: str, req: Request, authorization: 
 
     def mutate(r):
         r["admin_comment"] = (b.get("comment") or "").strip()
+
+    record = _mutate_explanation_record(record_id, mutate, role)
+    return {"ok": True, "record": record}
+
+
+MANUAL_SCORE_CRITERIA = ("age_appropriateness", "clarity", "gameplay_accuracy", "challenge_accuracy", "genuine")
+
+
+@app.post("/api/admin/explanations/{record_id}/score")
+async def score_explanation_manually(record_id: str, req: Request, authorization: Optional[str] = Header(None)):
+    """Staff scores a response by hand — for when automatic scoring failed
+    (the record is flagged scoring_failed). Body: {scores: {criterion: 0|1},
+    strengths, improvements: [{criterion, reason, fix?}]}. Replaces the
+    automatic result on that record and stamps who scored it."""
+    role, _ = _check(authorization, ADMIN_ROLES)
+    b = await req.json()
+    raw = b.get("scores") or {}
+    scores = {k: 1 if raw.get(k) in (1, True, "1", "true") else 0 for k in MANUAL_SCORE_CRITERIA}
+    strengths = (b.get("strengths") or "").strip()[:1000]
+    improvements = []
+    for item in (b.get("improvements") or []):
+        if not isinstance(item, dict):
+            continue
+        crit = (item.get("criterion") or "").strip()
+        reason = (item.get("reason") or "").strip()[:600]
+        if crit in MANUAL_SCORE_CRITERIA and reason and not scores[crit]:
+            improvements.append({"criterion": crit, "reason": reason, "fix": (item.get("fix") or "").strip()[:600]})
+
+    def mutate(r):
+        r["scores"] = scores
+        r["strengths"] = strengths
+        r["improvements"] = improvements
+        r["reasoning"] = "Scored manually by staff."
+        r["scoring_failed"] = False
+        r["manual_score"] = {"by": role, "at": time.strftime("%Y-%m-%d %H:%M")}
 
     record = _mutate_explanation_record(record_id, mutate, role)
     return {"ok": True, "record": record}
