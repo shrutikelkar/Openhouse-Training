@@ -550,12 +550,13 @@ function responsesTab(){
   const categories=[...new Set(ALL.map(r=>r.category).filter(Boolean))].sort((a,b)=>catLabel(a).localeCompare(catLabel(b)));
   const games=[...new Set(ALL.filter(r=>!CATEGORY_FILTER||r.category===CATEGORY_FILTER).map(r=>r.game_name).filter(Boolean))].sort();
   if(GAME_FILTER && !games.includes(GAME_FILTER)) GAME_FILTER='';
+  const traineeNames=[...new Set(ALL.filter(r=>!CATEGORY_FILTER||r.category===CATEGORY_FILTER).map(r=>r.trainee_name).filter(Boolean).concat(TRAINEE_FILTER?[TRAINEE_FILTER]:[]))].sort((a,b)=>a.localeCompare(b));
 
   const filterRow=document.createElement('div'); filterRow.className='filters';
   filterRow.innerHTML='<span style="font-weight:800;font-size:13px;color:var(--teal)">Filter</span>'
     +(categories.length?'<select id="category-select"><option value="">All categories</option>'+categories.map(c=>'<option value="'+esc(c)+'"'+(c===CATEGORY_FILTER?' selected':'')+'>'+esc(catLabel(c))+'</option>').join('')+'</select>':'')
     +'<select id="game-select"><option value="">All games</option>'+games.map(g=>'<option value="'+esc(g)+'"'+(g===GAME_FILTER?' selected':'')+'>'+esc(g)+'</option>').join('')+'</select>'
-    +(TRAINEE_FILTER?'<span class="pill coral">trainee: '+esc(TRAINEE_FILTER)+' <span style="cursor:pointer" id="clear-trainee-filter">✕</span></span>':'')
+    +'<select id="trainee-select"><option value="">All trainees</option>'+traineeNames.map(n=>'<option value="'+esc(n)+'"'+(n===TRAINEE_FILTER?' selected':'')+'>'+esc(n)+'</option>').join('')+'</select>'
     +'<button class="ghost" id="download-csv" style="margin-left:auto">⬇ download CSV</button>';
   root.appendChild(filterRow);
 
@@ -585,8 +586,8 @@ function responsesTab(){
   if(gs) gs.onchange=()=>{ GAME_FILTER=gs.value; render(); };
   const cs=document.getElementById('category-select');
   if(cs) cs.onchange=()=>{ CATEGORY_FILTER=cs.value; render(); };
-  const ctf=document.getElementById('clear-trainee-filter');
-  if(ctf) ctf.onclick=()=>{ TRAINEE_FILTER=''; render(); };
+  const ts=document.getElementById('trainee-select');
+  if(ts) ts.onchange=()=>{ TRAINEE_FILTER=ts.value; render(); };
   const dl=document.getElementById('download-csv');
   if(dl) dl.onclick=()=>downloadRecordsCSV(filtered);
 
